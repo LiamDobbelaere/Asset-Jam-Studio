@@ -1,4 +1,4 @@
-<p align="center"><img src="docs/logo.png" alt="Asset Jam Studio" height="140"></p>
+<p align="center"><img src="docs/logo.svg" alt="Asset Jam Studio" height="140"></p>
 
 # Asset Jam Studio
 
