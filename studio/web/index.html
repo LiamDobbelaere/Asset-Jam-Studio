@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Asset Jam Studio</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%236d5dfc'/%3E%3Cpath d='M9 22V10l7 4 7-4v12l-7 4z' fill='none' stroke='white' stroke-width='2.2' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%236d5dfc'/%3E%3Crect x='8' y='4' width='16' height='4.2' rx='1.2' fill='white'/%3E%3Cpath d='M9.2 8.2v1.6C8.1 10.4 7.5 11.4 7.5 12.7V24a3 3 0 0 0 3 3h11a3 3 0 0 0 3-3V12.7c0-1.3-.6-2.3-1.7-2.9V8.2' fill='none' stroke='white' stroke-width='2.2' stroke-linejoin='round' stroke-linecap='round'/%3E%3Cpath d='M7.5 15.2c2.2 1.3 3.8-.6 6 .4s3.6 1.1 5.6 0 3.5-.5 5.4.3V24a3 3 0 0 1-3 3h-11a3 3 0 0 1-3-3z' fill='white'/%3E%3Cpath d='M10.6 21.4h4M12.6 19.4v4' stroke='%236d5dfc' stroke-width='1.9' stroke-linecap='round'/%3E%3Ccircle cx='19' cy='20.4' r='1.15' fill='%236d5dfc'/%3E%3Ccircle cx='21' cy='22.4' r='1.15' fill='%236d5dfc'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="/style.css">
 <script>
 // apply the saved accent colour before the first paint (app.js owns the picker)
@@ -31,7 +31,12 @@ try { var a = localStorage.getItem('accent'); if (a && /^#[0-9a-f]{6}$/i.test(a)
 </head>
 <body>
 <header class="topbar">
-  <div class="brand"><span class="logo"><svg viewBox="0 0 32 32"><path d="M9 22V10l7 4 7-4v12l-7 4z"/></svg></span><span>Asset Jam Studio</span></div>
+  <div class="brand"><span class="logo"><svg viewBox="0 0 32 32">
+    <rect class="solid" x="8" y="4" width="16" height="4.2" rx="1.2"/>
+    <path d="M9.2 8.2v1.6C8.1 10.4 7.5 11.4 7.5 12.7V24a3 3 0 0 0 3 3h11a3 3 0 0 0 3-3V12.7c0-1.3-.6-2.3-1.7-2.9V8.2"/>
+    <path class="solid" d="M7.5 15.2c2.2 1.3 3.8-.6 6 .4s3.6 1.1 5.6 0 3.5-.5 5.4.3V24a3 3 0 0 1-3 3h-11a3 3 0 0 1-3-3z"/>
+    <path class="cut" d="M10.6 21.4h4M12.6 19.4v4"/><circle class="cut dot" cx="19" cy="20.4" r="1.15"/><circle class="cut dot" cx="21" cy="22.4" r="1.15"/>
+  </svg></span><span>Asset Jam Studio</span></div>
   <nav class="tabs" id="nav">
     <button data-page="overview" title="Overview: queue, system state"><svg><use href="#i-overview"/></svg><span class="lbl">Overview</span></button>
     <button data-page="model3d" title="3D Models: text → GLB / FBX"><svg><use href="#i-model3d"/></svg><span class="lbl">3D Models</span></button>
