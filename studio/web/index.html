@@ -23,6 +23,7 @@ try { var a = localStorage.getItem('accent'); if (a && /^#[0-9a-f]{6}$/i.test(a)
   <symbol id="i-sprite" viewBox="0 0 24 24"><circle cx="12" cy="6.5" r="3.5"/><path d="M5 21v-3a5 5 0 0 1 5-5h4a5 5 0 0 1 5 5v3"/></symbol>
   <symbol id="i-voice" viewBox="0 0 24 24"><rect x="9" y="2.5" width="6" height="12" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7"/></symbol>
   <symbol id="i-music" viewBox="0 0 24 24"><path d="M9 18.5V5.5l11-2.5v13"/><circle cx="6" cy="18.5" r="3"/><circle cx="17" cy="16" r="3"/></symbol>
+  <symbol id="i-sfx" viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11"/></symbol>
   <symbol id="i-video" viewBox="0 0 24 24"><rect x="2.5" y="4" width="19" height="16" rx="2"/><path d="M2.5 9h19M2.5 15h19M7 4v16M17 4v16"/></symbol>
   <symbol id="i-anim" viewBox="0 0 24 24"><circle cx="15" cy="4.5" r="2"/><path d="M4 21l4.5-6.5 3-1.5 2-5.5-3.5.5L7 11M11.5 13.5l3 3 1.5 4.5M13.5 7.5l3.5 2 3-1"/></symbol>
   <symbol id="i-palette" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18c1.4 0 2-.8 2-1.7 0-1-.8-1.3-.8-2.3 0-1 .8-1.5 2-1.5H17a4 4 0 0 0 4-4c0-4.8-4-8.5-9-8.5z"/><circle cx="7.5" cy="12" r="1.2"/><circle cx="10" cy="7.5" r="1.2"/><circle cx="15" cy="7.5" r="1.2"/></symbol>
@@ -38,6 +39,7 @@ try { var a = localStorage.getItem('accent'); if (a && /^#[0-9a-f]{6}$/i.test(a)
     <button data-page="sprite" title="Sprites: 2D character sprites"><svg><use href="#i-sprite"/></svg><span class="lbl">Sprites</span></button>
     <button data-page="voice" title="Voice: dialogue lines"><svg><use href="#i-voice"/></svg><span class="lbl">Voice</span></button>
     <button data-page="music" title="Music: tracks and loops"><svg><use href="#i-music"/></svg><span class="lbl">Music</span></button>
+    <button data-page="sfx" title="SFX: sound effects"><svg><use href="#i-sfx"/></svg><span class="lbl">SFX</span></button>
     <button data-page="video" title="Video (beta): shot list → mp4"><svg><use href="#i-video"/></svg><span class="lbl">Video</span><span class="beta">beta</span></button>
     <button data-page="anim" title="Animate: rig + animation clips"><svg><use href="#i-anim"/></svg><span class="lbl">Animate</span></button>
   </nav>
@@ -52,6 +54,7 @@ try { var a = localStorage.getItem('accent'); if (a && /^#[0-9a-f]{6}$/i.test(a)
   <section class="page" data-page="sprite" id="page-sprite"></section>
   <section class="page" data-page="voice" id="page-voice"></section>
   <section class="page" data-page="music" id="page-music"></section>
+  <section class="page" data-page="sfx" id="page-sfx"></section>
   <section class="page" data-page="video" id="page-video"></section>
   <section class="page" data-page="anim" id="page-anim"></section>
 </main>

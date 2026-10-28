@@ -1,0 +1,13 @@
+# MOSS-TTS checkout, environment and weights: recreated by setup.ps1
+MOSS-TTS/
+.venv/
+models/
+.cache/
+
+# generated sound effects (folder kept, contents ignored)
+output/*
+!output/.gitkeep
+
+__pycache__/
+*.pyc
+*.log

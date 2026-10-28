@@ -2,8 +2,8 @@
 
 # Asset Jam Studio
 
-A local, offline game-asset studio: 3D props, seamless textures, 2D sprites, voice lines, music, intro
-videos and rigged, animated characters from text, all on your own GPU.
+A local, offline game-asset studio: 3D props, seamless textures, 2D sprites, voice lines, music, sound
+effects, intro videos and rigged, animated characters from text, all on your own GPU.
 
 ![The 3D Models page: a generated treasure chest in the viewer](docs/screenshots/model3d.png)
 
@@ -26,6 +26,7 @@ ask your LLM to adapt the settings for your GPU.
 | [`ai-3d/`](ai-3d/README.md) | text → low-poly 3D props (GLB + Unity FBX), seamless world textures, 2D sprite edit/pose/generation | Z-Image-Turbo, Pixal3D / TRELLIS.2, FLUX.2 klein 4B, BiRefNet, MoGe-2 in ComfyUI |
 | [`ai-voc/`](ai-voc/README.md) | text → dialogue in an actor's voice, with moods and optional fine-tuning | Qwen3-TTS 1.7B-Base, Whisper large-v3-turbo |
 | [`ai-mus/`](ai-mus/README.md) | text → game music (instrumental or sung), seamless loops, 48 kHz stereo | ACE-Step 1.5 (2B turbo DiT + 0.6B planner LM) |
+| [`ai-sfx/`](ai-sfx/README.md) | text → sound effects (explosions, gunshots, footsteps, UI sounds, ambience loops), 48 kHz mono | MOSS-SoundEffect v2.0 (1.3B DiT + Qwen3-1.7B text encoder) |
 | [`ai-vid/`](ai-vid/README.md) | shot list → logo intros / short videos: Wan 2.2 clips chained through keyframes, logo reveal from the PNG, ffmpeg cross-fades + music | Wan 2.2 TI2V-5B, FLUX.2 klein (keyframes) in the ai-3d ComfyUI |
 | [`ai-anim/`](ai-anim/README.md) | humanoid mesh → rigged character (Mixamo skeleton) + animation clips from text: GLB with glTF animations + Unity FBX | Make-It-Animatable, NVIDIA Kimodo-SOMA-RP (Llama-3 text encoder on the CPU), Blender |
 | [`studio/`](studio/README.md) | browser front-end for all of the above: one queue, live progress, libraries; the same queue as an HTTP API + CLI ([`studio/API.md`](studio/API.md)) | — |

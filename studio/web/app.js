@@ -4,9 +4,9 @@ const state = {
   page: location.hash.slice(1) || 'overview',
   system: null,
   jobs: new Map(),
-  library: { model3d: [], texture: [], sprite: [], voice: [], music: [], video: [], anim: [] },
+  library: { model3d: [], texture: [], sprite: [], voice: [], music: [], sfx: [], video: [], anim: [] },
   libLoaded: {},
-  voices: [], tips: null, music: null, video: null, anim: null,
+  voices: [], tips: null, music: null, sfx: null, video: null, anim: null,
   selected: {},          // kind -> library item key
   focus: {},             // kind -> job id shown in the activity card
   forms: {},             // kind -> form state (uploads etc.)
@@ -43,8 +43,8 @@ function modal(content) { const m = $('#modal'), box = $('#modal-box'); box.inne
 $('#modal').addEventListener('click', e => { if (e.target.id === 'modal') $('#modal').classList.add('hidden'); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') $('#modal').classList.add('hidden'); });
 function lightbox(url) { modal(h('img', { src: url })); }
-const KIND_LABEL = { model3d: '3D model', texture: 'Texture', sprite: 'Sprite', voice: 'Voice line', voice_prep: 'Voice prep', music: 'Music', video: 'Video', anim: 'Character' };
-const AUDIO_KINDS = ['voice', 'music'];
+const KIND_LABEL = { model3d: '3D model', texture: 'Texture', sprite: 'Sprite', voice: 'Voice line', voice_prep: 'Voice prep', music: 'Music', sfx: 'Sound effect', video: 'Video', anim: 'Character' };
+const AUDIO_KINDS = ['voice', 'music', 'sfx'];
 const pageOf = kind => kind === 'voice_prep' ? 'voice' : kind;   // voice preparation jobs show on the Voice page
 
 // ------------------------------------------------------------------ events
@@ -84,12 +84,13 @@ async function loadState() {
 function jobsOf(kind) { return [...state.jobs.values()].filter(j => j.kind === kind).sort((a, b) => b.created - a.created); }
 async function loadLibrary(kind, force = false) {
   if (state.libLoaded[kind] && !force) return;
-  const path = { model3d: 'models', texture: 'textures', sprite: 'sprites', voice: 'voice', music: 'music', video: 'videos', anim: 'characters' }[kind];
+  const path = { model3d: 'models', texture: 'textures', sprite: 'sprites', voice: 'voice', music: 'music', sfx: 'sfx', video: 'videos', anim: 'characters' }[kind];
   state.library[kind] = await api.get('/api/library/' + path);
   state.libLoaded[kind] = true;
   if (kind === 'anim') { if (!state.libLoaded.model3d) await loadLibrary('model3d'); if (!state.anim || force) { state.anim = await api.get('/api/anim'); buildAnimForm(); } }
   if (kind === 'voice' && (!state.voices.length || force)) { const v = await api.get('/api/voices'); state.voices = v.voices; state.tips = v.tips; buildVoiceForm(); }
   if (kind === 'music' && (!state.music || force)) { state.music = await api.get('/api/music'); buildMusicForm(); }
+  if (kind === 'sfx' && (!state.sfx || force)) { state.sfx = await api.get('/api/sfx'); buildSfxForm(); }
   if (kind === 'video' && !state.video) { state.video = await api.get('/api/video'); buildVideoForm(); }
   scheduleRender();
 }
@@ -116,6 +117,7 @@ function renderStatus() {
     c.alive ? 'running' : c.process === 'starting' ? 'starting…' : 'stopped', comfyButton(c)));
   el.append(workerChip('Voice', s.tts || {}, 'Qwen3-TTS worker process (ai-voc)', '/api/tts/stop'));
   el.append(workerChip('Music', s.music || {}, 'ACE-Step 1.5 worker process (ai-mus)', '/api/music/stop'));
+  el.append(workerChip('SFX', s.sfx || {}, 'MOSS-SoundEffect v2.0 worker process (ai-sfx)', '/api/sfx/stop'));
   el.append(workerChip('Animate', s.anim || {}, 'Rig + motion worker process (ai-anim: Make-It-Animatable, Kimodo)', '/api/anim/stop'));
   if (g.available) el.append(h('span', { class: 'chip', title: `${g.name} · ${(g.used_mb / 1024).toFixed(1)} / ${(g.total_mb / 1024).toFixed(0)} GB · ${g.util}% busy` }, h('span', { class: 'txt' }, 'GPU '), h('b', { class: 'val' }, `${(g.used_mb / 1024).toFixed(1)} / ${(g.total_mb / 1024).toFixed(0)} GB`), h('span', { class: 'vrambar' }, h('i', { style: { width: Math.round(100 * g.used_mb / g.total_mb) + '%' } })), h('span', { class: 'dim val' }, g.util + '%')));
   const run = s.running ? state.jobs.get(s.running) : null;
@@ -150,7 +152,7 @@ applyAccent(currentAccent(), false);
 // ------------------------------------------------------------------ navigation
 function go(page) { state.page = page; location.hash = page; for (const b of $('#nav').children) b.classList.toggle('active', b.dataset.page === page); for (const p of document.querySelectorAll('.page')) p.classList.toggle('active', p.dataset.page === page); if (page !== 'overview') loadLibrary(page); renderPage(); }
 $('#nav').addEventListener('click', e => { const b = e.target.closest('button'); if (b) go(b.dataset.page); });
-function renderPage() { ({ overview: renderOverview, model3d: () => renderFlow('model3d'), texture: () => renderFlow('texture'), sprite: () => renderFlow('sprite'), voice: () => renderFlow('voice'), music: () => renderFlow('music'), video: () => renderFlow('video'), anim: () => renderFlow('anim') })[state.page](); renderStatus(); }
+function renderPage() { ({ overview: renderOverview, model3d: () => renderFlow('model3d'), texture: () => renderFlow('texture'), sprite: () => renderFlow('sprite'), voice: () => renderFlow('voice'), music: () => renderFlow('music'), sfx: () => renderFlow('sfx'), video: () => renderFlow('video'), anim: () => renderFlow('anim') })[state.page](); renderStatus(); }
 
 // ------------------------------------------------------------------ shared UI pieces
 function field(label, input, hint) { return h('label', { class: 'field' }, h('span', {}, label), input, hint ? h('div', { class: 'hint' }, hint) : null); }
@@ -283,6 +285,7 @@ function resultView(job, lib) {
   if (kind === 'voice') return resultVoice(job, lib);
   if (kind === 'voice_prep') return resultVoicePrep(job);
   if (kind === 'music') return resultMusic(job, lib);
+  if (kind === 'sfx') return resultSfx(job, lib);
   if (kind === 'video') return resultVideo(job, lib);
   if (kind === 'anim') return resultAnim(job, lib);
 }
@@ -391,14 +394,14 @@ function activityCard(kind) {
   if (job.status === 'running' || job.status === 'queued') {
     const live = h('div', { class: 'live' },
       h('div', {}, h('h3', {}, 'Live preview'), h('div', { class: 'preview-box' + (AUDIO_KINDS.includes(kind) ? ' hidden' : ''), style: { marginTop: '8px' } }, h('span', { class: 'tag' }, 'sampler preview'), h('img', { 'data-preview': job.id, src: `/api/jobs/${job.id}/preview?seq=${job.preview_seq || 0}`, onerror: e => { e.target.parentElement.classList.add('hidden'); } }))),
-      h('div', {}, h('h3', {}, 'Intermediate results'), h('div', { class: 'inter', style: { marginTop: '8px' } }, job.intermediates?.length ? thumbStrip(job.intermediates, it => it.kind === 'image' ? lightbox(it.url) : modal(h('div', { style: { width: '80vw' } }, viewerBox(it.url)))) : h('div', { class: 'dim small' }, kind === 'voice' ? 'The worker reports when the model is loaded and when the line is generated.' : kind === 'music' ? 'The planner LM runs first (bpm, key, structure, semantic codes), then the DiT diffuses 8 steps and the VAE decodes.' : kind === 'video' ? 'Keyframes and each shot\'s last frame appear here as they finish; the sampler preview shows the clip being painted.' : 'Images and meshes appear here as each node finishes.'))));
+      h('div', {}, h('h3', {}, 'Intermediate results'), h('div', { class: 'inter', style: { marginTop: '8px' } }, job.intermediates?.length ? thumbStrip(job.intermediates, it => it.kind === 'image' ? lightbox(it.url) : modal(h('div', { style: { width: '80vw' } }, viewerBox(it.url)))) : h('div', { class: 'dim small' }, kind === 'voice' ? 'The worker reports when the model is loaded and when the line is generated.' : kind === 'music' ? 'The planner LM runs first (bpm, key, structure, semantic codes), then the DiT diffuses 8 steps and the VAE decodes.' : kind === 'sfx' ? 'The text encoder reads the prompt, the DiT runs its flow-matching steps (two passes each for guidance), then the DAC VAE decodes 48 kHz audio.' : kind === 'video' ? 'Keyframes and each shot\'s last frame appear here as they finish; the sampler preview shows the clip being painted.' : 'Images and meshes appear here as each node finishes.'))));
     card.append(live);
     if (AUDIO_KINDS.includes(kind)) live.firstChild.classList.add('hidden');
   } else if (job.status === 'done') {
     card.append(h('div', { style: { marginTop: '12px' } }, resultView(job, null)));
   }
   card.append(h('details', { style: { marginTop: '10px' } }, h('summary', { class: 'dim small', style: { cursor: 'pointer' } }, 'Log'), logBox(job)));
-  if (queued.length) card.append(h('div', { class: 'dim small', style: { marginTop: '8px' } }, `${queued.length} more ${kind === 'voice' ? 'line' : kind === 'music' ? 'track' : kind === 'video' ? 'video' : 'job'}${queued.length > 1 ? 's' : ''} queued: `, queued.map(j => j.title.slice(0, 40)).join(' · ')));
+  if (queued.length) card.append(h('div', { class: 'dim small', style: { marginTop: '8px' } }, `${queued.length} more ${kind === 'voice' ? 'line' : kind === 'music' ? 'track' : kind === 'sfx' ? 'sound' : kind === 'video' ? 'video' : 'job'}${queued.length > 1 ? 's' : ''} queued: `, queued.map(j => j.title.slice(0, 40)).join(' · ')));
   card.update = j => { pb.update(j); const b = head.querySelector('.badge'); if (b.textContent !== j.status) { b.textContent = j.status; b.className = 'badge ' + j.status; } };
   return card;
 }
@@ -424,10 +427,11 @@ function libraryCard(kind, it) {
 }
 function libraryBlock(kind) {
   const items = state.library[kind] || [];
-  const wrap = h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('h2', {}, 'Library'), h('span', { class: 'dim small' }, `${items.length} ${kind === 'voice' ? 'takes' : kind === 'music' ? 'tracks' : 'items'}`), h('button', { class: 'btn xs right', onclick: () => loadLibrary(kind, true) }, '↻ Rescan')));
+  const wrap = h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('h2', {}, 'Library'), h('span', { class: 'dim small' }, `${items.length} ${kind === 'voice' ? 'takes' : kind === 'music' ? 'tracks' : kind === 'sfx' ? 'sounds' : 'items'}`), h('button', { class: 'btn xs right', onclick: () => loadLibrary(kind, true) }, '↻ Rescan')));
   if (!items.length) { wrap.append(h('div', { class: 'empty' }, 'Nothing here yet')); return wrap; }
   if (kind === 'voice') { wrap.append(voiceTable(items)); return wrap; }
   if (kind === 'music') { wrap.append(musicTable(items)); return wrap; }
+  if (kind === 'sfx') { wrap.append(sfxTable(items)); return wrap; }
   if (kind === 'video') { wrap.append(videoTable(items)); return wrap; }
   const grid = h('div', { class: 'grid' }); for (const it of items) grid.append(libraryCard(kind, it)); wrap.append(grid);
   if (kind === 'model3d' || kind === 'anim') queueThumbs(items.filter(it => it.glb && !it.thumb));
@@ -497,7 +501,7 @@ function renderFlow(kind) {
     page.innerHTML = ''; page.append(h('div', { class: 'layout' }, h('div', { class: 'formcol' }, buildForm(kind)), h('div', { class: 'maincol stack' }))); built[kind] = true;
     // the data-driven forms may already have their data (a job finished before the page was first opened and
     // refreshed it); loadLibrary() will not fetch again, so build the form from what is there
-    const late = { voice: () => state.voices.length && buildVoiceForm(), music: () => state.music && buildMusicForm(), video: () => state.video && buildVideoForm(), anim: () => state.anim && buildAnimForm() }[kind];
+    const late = { voice: () => state.voices.length && buildVoiceForm(), music: () => state.music && buildMusicForm(), sfx: () => state.sfx && buildSfxForm(), video: () => state.video && buildVideoForm(), anim: () => state.anim && buildAnimForm() }[kind];
     if (late) late();
   }
   const main = $('.maincol', page);
@@ -505,7 +509,7 @@ function renderFlow(kind) {
   const old = $('.maincol > .card:not(.activity)', page);
   if (state.libLoaded[kind]) { const lb = libraryBlock(kind); if (old) { for (const v of viewers.keys()) if (old.contains(v)) { viewers.get(v).dispose(); viewers.delete(v); } old.replaceWith(lb); } else main.append(lb); }
 }
-function buildForm(kind) { return { model3d: build3dForm, texture: buildTextureForm, sprite: buildSpriteForm, voice: buildVoiceFormShell, music: buildMusicFormShell, video: buildVideoFormShell, anim: buildAnimFormShell }[kind](); }
+function buildForm(kind) { return { model3d: build3dForm, texture: buildTextureForm, sprite: buildSpriteForm, voice: buildVoiceFormShell, music: buildMusicFormShell, sfx: buildSfxFormShell, video: buildVideoFormShell, anim: buildAnimFormShell }[kind](); }
 async function submit(kind, params, parent) {
   try {
     const job = await api.post('/api/jobs', { kind, params, parent });
@@ -853,6 +857,77 @@ function buildMusicForm() {
   }
 }
 
+// ------------------------------------------------------------------ sound effects (MOSS-SoundEffect v2.0)
+function resultSfx(job, lib) {
+  const files = job?.outputs?.files || (lib ? [lib] : []);
+  if (!files.length) return h('div', { class: 'empty' }, 'No audio yet');
+  const p = job?.params || lib?.job?.params || {};
+  const box = h('div', {}, h('div', { class: 'muted', style: { marginBottom: '8px' } }, '“', p.prompt || lib?.prompt || '', '”'));
+  const tbl = h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Take'), h('th', {}, 'Audio'), h('th', {}, 'Seed'), h('th', {}, 'Length'), h('th', {}, ''))));
+  files.forEach((f, i) => tbl.append(h('tr', {}, h('td', {}, files.length > 1 ? `#${i + 1}` : basename(f.url)), h('td', {}, h('audio', { controls: true, preload: 'none', src: f.url, loop: !!p.loop })), h('td', { class: 'mono' }, f.seed ?? ''), h('td', {}, f.duration != null ? f.duration + ' s' : ''),
+    h('td', { style: { whiteSpace: 'nowrap' } }, dl(f.url, basename(f.url).split('.').pop().toUpperCase()), ' ', reveal(f.path)))));
+  box.append(tbl, kv([['Length', p.duration ? p.duration + ' s asked (silence trimmed)' : null], ['Loop', p.loop ? `yes, ${p.crossfade || 1} s crossfade` : null], ['Negative', p.negative || null],
+    ['Level', p.normalize === false ? 'raw' : `peak ${p.peak_db ?? -1} dBFS`], ['Steps / guidance', `${p.steps || 50} / ${p.cfg || 4}`]]));
+  return box;
+}
+function sfxTable(items) {
+  const tbl = h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, ''), h('th', {}, 'Date'), h('th', {}, 'Sound'), h('th', {}, 'Prompt'), h('th', {}, 'Length'), h('th', {}, 'Seed'), h('th', {}, ''))));
+  for (const it of items) {
+    const job = it.job ? Object.assign({ kind: 'sfx', status: 'done', id: it.job.id }, it.job) : null;
+    tbl.append(h('tr', {}, h('td', {}, playBtn(it.url)), h('td', { class: 'small', style: { whiteSpace: 'nowrap' } }, fmtDate(it.mtime)),
+      h('td', {}, h('b', {}, it.name), it.loop ? h('div', { class: 'dim small' }, 'loop') : null),
+      h('td', {}, h('span', { class: 'text', title: it.prompt || it.file }, it.prompt || it.file)), h('td', { class: 'small' }, it.duration != null ? it.duration + ' s' : ''), h('td', { class: 'mono' }, it.seed ?? ''),
+      h('td', { style: { whiteSpace: 'nowrap' } }, job ? h('button', { class: 'btn xs', title: 'Load this prompt and its settings into the form', onclick: () => reuse(job) }, '↻') : null, ' ', dl(it.url, it.file.split('.').pop().toUpperCase()))));
+  }
+  return tbl;
+}
+// one-click starting points: label, prompt, length, loop
+const SFX_EXAMPLES = [
+  ['Explosion', 'a huge explosion with a deep boom and debris falling, outdoors', 5, false],
+  ['Gunshot', 'a single pistol gunshot, sharp and loud, short echo in a concrete room', 1.5, false],
+  ['Footsteps', 'footsteps of boots walking on gravel, steady pace', 4, false],
+  ['Sword', 'a metal sword swung fast through the air and clashing against another sword', 1.5, false],
+  ['UI click', 'a soft short user-interface click, clean and bright', 0.5, false],
+  ['Pickup', 'a bright magical chime for picking up a coin in a video game', 1, false],
+  ['Rain loop', 'steady rain falling on a tin roof, no thunder', 15, true],
+];
+function buildSfxFormShell() { const form = h('form', { class: 'card form', id: 'sfx-form', onsubmit: e => e.preventDefault() }, h('div', { class: 'empty' }, 'loading…')); return form; }
+function buildSfxForm() {
+  const form = $('#sfx-form'); if (!form) return;
+  const prev = form.dataset.built ? readForm(form) : {};
+  form.innerHTML = ''; form.dataset.built = '1';
+  const info = state.sfx || { ready: { ready: false }, tips: null };
+  const ta = h('textarea', { name: 'prompt', placeholder: 'a single pistol gunshot in a small concrete room, sharp, short echo', style: { minHeight: '80px' } });
+  ta.value = prev.prompt || '';
+  const examples = h('div', { class: 'row', style: { flexWrap: 'wrap', gap: '6px', marginBottom: '10px' } }, SFX_EXAMPLES.map(([label, prompt, duration, loop]) => h('button', { type: 'button', class: 'btn xs', title: prompt, onclick: () => fillForm(form, { prompt, duration, loop, name: '' }) }, label)));
+  form.append(h('div', { class: 'card-head' }, h('h2', {}, 'Text → sound effect')),
+    ...(info.ready.ready ? [] : [h('div', { class: 'errbox' }, 'ai-sfx is not set up: run ai-sfx/setup.ps1 (clones MOSS-TTS and downloads ~11 GB of weights).')]),
+    field('Sound', ta, 'What makes the sound, what it does, and where: source + action + space.'), examples,
+    h('div', { class: 'two' }, field('Length (s)', num('duration', prev.duration ?? 4, { min: 0.5, max: 30, step: 0.5 }), '0.5–30; silence at the end is trimmed'), field('Takes', select('takes', [1, 2, 3, 4, 5, 6, 8], prev.takes || 4), 'Consecutive seeds; keep the best')),
+    check('loop', 'Seamless loop (for ambiences)', prev.loop ?? false, 'The last second is blended into the start and cut off'),
+    h('div', { class: 'two' }, field('Name', text('name', prev.name || '', { placeholder: 'PistolShot (from prompt)' })), field('Format', select('format', [['wav', 'WAV 16-bit'], ['ogg', 'OGG Vorbis'], ['flac', 'FLAC']], prev.format || 'wav'))),
+    seedField(),
+    h('details', {}, h('summary', {}, 'Advanced'),
+      field('Negative prompt', text('negative', prev.negative || '', { placeholder: 'music, speech, voices' })),
+      h('div', { class: 'three' }, field('Steps', num('steps', prev.steps ?? 50, { min: 10, max: 200 }), 'upstream: 100'), field('Guidance', num('cfg', prev.cfg ?? 4, { min: 1, max: 10, step: 0.5 })), field('Peak (dBFS)', num('peak_db', prev.peak_db ?? -1, { min: -24, max: 0, step: 0.5 }))),
+      field('Low-cut (Hz)', num('highpass', prev.highpass ?? 30, { min: 0, max: 500, step: 5 }), 'Removes sub-bass drift; 0 = off'),
+      check('trim', 'Trim leading/trailing silence', prev.trim ?? true), check('normalize', 'Peak-normalize', prev.normalize ?? true),
+      field('Loop crossfade (s)', num('crossfade', prev.crossfade ?? 1, { min: 0.1, max: 5, step: 0.1 }))),
+    h('div', { class: 'actions' }, h('button', { class: 'btn primary block', type: 'button', onclick: () => { const p = readForm(form); if (!p.prompt.trim()) return toast('describe the sound', 'err'); submit('sfx', p); } }, '▶ Generate')),
+    h('div', { class: 'hint' }, 'About 25 s per take on the 2080 whatever the length, after a ~20 s model load. The other workers are unloaded and ComfyUI is asked to free its VRAM first.'));
+  const tips = info.tips;
+  if (tips) {
+    const t = h('div', { class: 'tips', style: { marginTop: '14px' } }, h('h3', {}, 'Writing the prompt'), h('div', { class: 'hint' }, tips.note));
+    const tbl = h('table', {});
+    for (const r of tips.documented) tbl.append(h('tr', {}, h('td', {}, h('code', {}, r.mark)), h('td', { class: 'muted' }, r.effect)));
+    t.append(tbl, h('div', { class: 'dim small', style: { marginTop: '8px' } }, 'Not yet tested here:'));
+    const tbl2 = h('table', {});
+    for (const r of tips.untested) tbl2.append(h('tr', {}, h('td', {}, h('code', {}, r.mark)), h('td', { class: 'dim' }, r.effect)));
+    t.append(tbl2);
+    form.append(t);
+  }
+}
+
 // ------------------------------------------------------------------ overview
 async function renderOverview() {
   const page = $('#page-overview'); const s = state.system; if (!s) return;
@@ -867,6 +942,7 @@ async function renderOverview() {
     h('div', { class: 'stat' }, h('div', { class: 'k' }, 'ComfyUI'), h('div', { class: 'v' }, s.comfy.alive ? 'running' : s.comfy.process), h('div', { class: 's' }, s.comfy.alive ? `${s.comfy.queue.running} running · ${s.comfy.queue.pending} pending in its queue` : 'image, 3D, texture, sprite and video models'), h('div', { class: 'row' }, comfyButton(s.comfy), s.comfy.process === 'running' ? h('button', { class: 'btn xs', onclick: () => api.post('/api/comfy/stop').then(() => toast('stopping ComfyUI')).catch(e => toast(e.message, 'err')) }, 'Stop') : null)),
     h('div', { class: 'stat' }, h('div', { class: 'k' }, 'Voice worker'), h('div', { class: 'v' }, wstate(s.tts)), h('div', { class: 's' }, 'Qwen3-TTS stays loaded between lines and is unloaded before ComfyUI jobs'), wbtns(s.tts, '/api/tts', 'voice')),
     h('div', { class: 'stat' }, h('div', { class: 'k' }, 'Music worker'), h('div', { class: 'v' }, wstate(s.music)), h('div', { class: 's' }, 'ACE-Step 1.5 stays loaded between tracks and is unloaded before other jobs'), wbtns(s.music, '/api/music', 'music')),
+    h('div', { class: 'stat' }, h('div', { class: 'k' }, 'SFX worker'), h('div', { class: 'v' }, wstate(s.sfx)), h('div', { class: 's' }, 'MOSS-SoundEffect v2.0 stays loaded between sounds and is unloaded before other jobs'), wbtns(s.sfx, '/api/sfx', 'sfx')),
     h('div', { class: 'stat' }, h('div', { class: 'k' }, 'Animate worker'), h('div', { class: 'v' }, s.anim?.model_loaded ? 'models loaded' : wstate(s.anim)), h('div', { class: 's' }, 'Make-It-Animatable + Kimodo (Llama-3 encoder in RAM) stay loaded between characters and are unloaded before other jobs'), wbtns(s.anim, '/api/anim', 'animation')),
     h('div', { class: 'stat' }, h('div', { class: 'k' }, 'GPU'), h('div', { class: 'v' }, g.available ? `${(g.used_mb / 1024).toFixed(1)} / ${(g.total_mb / 1024).toFixed(0)} GB` : 'n/a'), h('div', { class: 's' }, g.available ? `${g.name} · ${g.util}% busy` : 'nvidia-smi not found')),
     h('div', { class: 'stat' }, h('div', { class: 'k' }, 'Queue'), h('div', { class: 'v' }, `${running.length} running · ${queued.length} queued`), h('div', { class: 's' }, 'Jobs run one after another so only one model set holds the GPU. Scripts and Claude use the same queue (see studio/API.md).'))));

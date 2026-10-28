@@ -1,6 +1,6 @@
 ---
 name: asset-jam-studio
-description: Generate game assets with the local Asset Jam Studio (3D models, seamless textures, 2D sprites, voice lines, music, videos, rigged + animated characters) through its HTTP API / CLI. Use whenever a task needs an art, audio or 3D asset that does not exist yet, or when the user mentions the studio, Asset Jam Studio, ai-3d, ai-voc, ai-mus, ai-vid or ai-anim.
+description: Generate game assets with the local Asset Jam Studio (3D models, seamless textures, 2D sprites, voice lines, music, sound effects, videos, rigged + animated characters) through its HTTP API / CLI. Use whenever a task needs an art, audio or 3D asset that does not exist yet, or when the user mentions the studio, Asset Jam Studio, ai-3d, ai-voc, ai-mus, ai-vid or ai-anim.
 ---
 
 # Asset Jam Studio as a tool
@@ -46,11 +46,11 @@ studio_cli.py cancel <job id>
 - Git Bash on Windows rewrites arguments that start with `/` into Windows paths, so `--source_url /files/...` arrives
   mangled ("pick a model to rig"). Prefix such commands with `MSYS_NO_PATHCONV=1`.
 - **Jobs run one at a time, oldest first.** Queuing several is safe; they just take turns. The GPU hand-over is
-  automatic and verified: a voice / music / anim job asks ComfyUI to unload, checks nvidia-smi, stops ComfyUI if
+  automatic and verified: a voice / music / sfx / anim job asks ComfyUI to unload, checks nvidia-smi, stops ComfyUI if
   it will not let go (the next ComfyUI job restarts it, ~30 s), ends the other workers' processes if their memory
   stays allocated, and errors out rather than run on a full GPU. So
   any order works, but every switch costs 20-40 s of model loading: **group jobs by kind** — textures, sprites
-  and 3D models (all ComfyUI) first, then voice lines, then music.
+  and 3D models (all ComfyUI) first, then voice lines, then music, then sound effects.
 - Two usable patterns:
   1. `submit ... --wait` for one asset you need before continuing (blocks; progress on stderr).
   2. `submit` several without `--wait` (each returns its id at once), do other work, then `wait <id>` for each.
@@ -58,7 +58,7 @@ studio_cli.py cancel <job id>
 - Exit code 0 = `done`. 1 = the job ended `error` or `cancelled`: the JSON has `error` and `log_tail`; read them,
   fix the parameters, resubmit. 2 = the request was rejected (parameter message in `error`) or the studio is down.
 - Typical durations: texture 20-50 s, sprite 30 s-2 min, voice line 5-20 s (+20 s first load), music ~1 s per
-  second of audio (+40 s first load), 3D model 3 min (25 min for `detailed`), rig 10 s + 10-30 s per clip,
+  second of audio (+40 s first load), sound effect ~25 s per take (+20 s first load), 3D model 3 min (25 min for `detailed`), rig 10 s + 10-30 s per clip,
   video ~40 s per second of footage. Set `--timeout` accordingly for `--wait`.
 
 ## 3. Results
@@ -74,10 +74,11 @@ in `seed`: re-submitting with the same parameters and `--seed <n>` reproduces th
 | `sprite` | `sprite` (RGBA PNG) | `ai-3d/assets/sprites/<Name>.png` |
 | `voice` | `files[]` (one wav per take) | `ai-voc/output/<voice>_<mood>_<slug>.wav` |
 | `music` | `files[]` (wav/ogg/flac, `meta.lm_bpm`) | `ai-mus/output/<Name>.wav` |
+| `sfx` | `files[]` (one wav/ogg/flac per take, 48 kHz mono) | `ai-sfx/output/<Name>.wav` (takes: `<Name>_1.wav`, ...) |
 | `video` | `final` (mp4), `clips[]`, `keyframes[]` | `ai-vid/output/<name>/` |
 | `anim` | `glb` (with all clips), `fbx`, `diffuse`, `clips[]` | `ai-anim/assets/<Name>/` |
 
-`studio_cli.py library models|textures|sprites|voice|music|videos|characters` lists what already exists (with
+`studio_cli.py library models|textures|sprites|voice|music|sfx|videos|characters` lists what already exists (with
 the parameters that made it): check it before generating something the user may already have.
 
 ## 4. Per kind: what to send
@@ -116,6 +117,14 @@ instruments, mood, tempo words; say "no vocals" for instrumentals. `--duration 4
 (30-90 s loop best; `loop` cross-fades the end into the start). `--lyrics "[Verse]\n..."` for sung tracks (then
 set `--bpm`). `--format ogg` when the target is a web game. `--takes 2` for alternatives.
 
+**sfx** (sound effects). `--prompt "a single pistol gunshot, sharp and loud, short echo in a concrete room"`:
+what makes the sound, what it does, where ("close up", "far away", "small tiled room"); "a single ..." for one
+hit, "several bursts" for a sequence. `--duration` 0.5-3 for one-shots, 3-6 for impacts with a tail, 10-30 for
+ambiences (`--loop true`). `--takes 4`: effects vary a lot per seed, so make several and pick (listen, or
+check `duration` in the outputs: a take trimmed far below the asked length is usually a weak one). Each take is
+trimmed, faded and peak-normalized to -1 dBFS, 48 kHz mono (right for positional audio). Every sound costs the
+same (~25 s per take, +20 s first load) whatever its length. `--negative "music, speech"` if a melody or voice creeps in.
+
 **anim** (rig + clips). Source: a character GLB from the 3D library: `studio_cli.py library models` → use the
 item's `glb` URL as `--source_url /files/assets/Hero.glb`, or a file path with `--mesh_upload`. Generate the
 model with `--preset character` first. `--clips '[{"name": "Idle", "prompt": "A person stands still, breathing
@@ -144,9 +153,9 @@ repo also work directly).
 
 1. `health`; start ComfyUI if needed. `library ...` for reusable assets.
 2. Plan the asset list, then queue by kind: textures and sprites and 3D models (ComfyUI), then voice lines,
-   then music. Submit without `--wait`, keep the ids, keep coding, `wait` on each id when you need the file.
+   then music, then sound effects. Submit without `--wait`, keep the ids, keep coding, `wait` on each id when you need the file.
 3. Copy `outputs.*.path` files into the game folder (e.g. `assets/textures/CobbleStreet.png`); load GLBs with
-   three.js `GLTFLoader`, sprites as textures with alpha, music/voice as `<audio>` (ogg or wav).
+   three.js `GLTFLoader`, sprites as textures with alpha, music/voice/sound effects as `<audio>` or Web Audio buffers (ogg or wav).
 4. Check results: Read a PNG to look at it; for a GLB trust `outputs` plus the triangle count in the job log.
    A bad result: change the prompt or the seed and resubmit; never loop blindly more than two or three times.
 5. If a job errors with "ComfyUI is not running" → `comfy start`, wait, resubmit. "venv not found" → that flow

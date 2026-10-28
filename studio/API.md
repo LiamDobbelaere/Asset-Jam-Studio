@@ -7,10 +7,10 @@ Claude to use it. No authentication: the server listens on localhost only.
 ## The model
 
 - A **job** is one generation request: `{"kind": ..., "params": {...}}`. Kinds: `model3d`, `texture`, `sprite`,
-  `voice`, `voice_prep`, `music`, `video`, `anim`.
+  `voice`, `voice_prep`, `music`, `sfx`, `video`, `anim`.
 - Jobs are **queued and run one at a time**, oldest first, by one worker thread. Only one model set is on the
-  GPU at any moment: before a ComfyUI job the voice / music / animation workers unload their models; before a
-  voice, music or animation job the other workers unload and ComfyUI is asked to free its VRAM. Queuing ten jobs
+  GPU at any moment: before a ComfyUI job the voice / music / sfx / animation workers unload their models; before a
+  voice, music, sfx or animation job the other workers unload and ComfyUI is asked to free its VRAM. Queuing ten jobs
   at once is safe; they just take turns.
 - Status: `queued` → `running` → `done` | `error` | `cancelled`. `progress` has `pct`, `phase`, `detail`,
   `value/max`. Records are persisted in `studio/jobs/<id>.json` and survive restarts (a job that was running
@@ -22,7 +22,7 @@ Claude to use it. No authentication: the server listens on localhost only.
 
 | Method, path | What |
 |---|---|
-| `GET /api/health` | `{ok, version, backends: {comfy, voice, music, video, anim}, running, queued, gpu}`: which back-ends are installed and usable right now |
+| `GET /api/health` | `{ok, version, backends: {comfy, voice, music, sfx, video, anim}, running, queued, gpu}`: which back-ends are installed and usable right now |
 | `GET /api/schema` | every kind with its `summary`, typical `time`, `outputs` and `params` (type, help, default, choices, required) |
 | `POST /api/jobs` `{"kind", "params", "parent"?}` | validate and queue; returns the job record (`400` with `{"error"}` when a parameter is wrong) |
 | `GET /api/jobs?kind=&status=&limit=` | recent jobs, newest first (log trimmed to the last 3 lines) |
@@ -33,13 +33,13 @@ Claude to use it. No authentication: the server listens on localhost only.
 | `GET /api/jobs/<id>/preview` | the latest sampler preview image of a running ComfyUI job |
 | `GET /api/events` | server-sent events: `job`, `log`, `preview`, `system`, `job_removed` |
 | `GET /api/state` | system state + the last 200 jobs (what the browser loads at start) |
-| `GET /api/library/models\|textures\|sprites\|voice\|music\|videos\|characters` | what is on disk, joined with the job that made it |
+| `GET /api/library/models\|textures\|sprites\|voice\|music\|sfx\|videos\|characters` | what is on disk, joined with the job that made it |
 | `GET /api/voices` | prepared voices with moods, reference transcripts, fine-tuned checkpoints; `GET\|POST /api/voices/<name>/clips` lists / edits the clip transcripts |
-| `GET /api/presets3d`, `/api/music`, `/api/video`, `/api/anim` | preset details, installed models, prompt tips, readiness per flow |
+| `GET /api/presets3d`, `/api/music`, `/api/sfx`, `/api/video`, `/api/anim` | preset details, installed models, prompt tips, readiness per flow |
 | `POST /api/upload?name=x.png` (raw body) | copies a file into `studio/uploads/`; returns `{path, url}` to use as `reference_upload`, `image_upload`, `ref_uploads[]`, `audio_upload`, `mesh_upload` |
 | `POST /api/comfy/start\|stop\|free\|interrupt` | ComfyUI process control (`free` unloads its models); `stop`/`free` answer `409` while a ComfyUI job runs |
-| `POST /api/tts\|music\|anim/stop\|unload` | worker process control; `409` while that worker has a job |
-| `GET /api/comfy/log`, `/api/tts\|music\|anim/log` | process output tails |
+| `POST /api/tts\|music\|sfx\|anim/stop\|unload` | worker process control; `409` while that worker has a job |
+| `GET /api/comfy/log`, `/api/tts\|music\|sfx\|anim/log` | process output tails |
 | `GET /files/<root>/<path>` | the generated files (`assets`, `comfy-output`, `voc-output`, `mus-output`, `vid-output`, `characters`, `uploads`, ...) |
 
 ## Parameters
@@ -55,6 +55,7 @@ against). The short version:
 | `voice` | `text`, `voice` | `mood`, `takes`, `seed`, `language`, `temperature`, `top_k`, `top_p`, `repetition_penalty`, `mood_timbre`, `model`, `speaker` |
 | `voice_prep` | `name` + (`folder` or `mood` + `refs`) | `language`, `ref_seconds`, `max_ref_clips` |
 | `music` | `caption` | `name`, `duration`, `loop`, `crossfade`, `takes`, `seed`, `format wav\|ogg\|flac`, `lyrics`, `instrumental`, `language`, `bpm`, `keyscale`, `timesignature`, `think`, `lm`, `steps`, `shift`, `lm_temperature`, `reference_upload` |
+| `sfx` | `prompt` | `name`, `duration` (0.5-30), `takes`, `seed`, `format wav\|ogg\|flac`, `loop`, `crossfade`, `negative`, `trim`, `normalize`, `peak_db`, `highpass`, `steps`, `cfg`, `shift` |
 | `video` | `shots[]` | `name`, `width`, `height`, `fps`, `transition`, `transition_kind`, `mode full\|keyframes\|assemble`, `only[]`, `audio_upload`, `negative`, `crf` (shot fields: see the schema or `ai-vid/README.md`) |
 | `anim` | `source_url` or `mesh_upload` (rig); `clips[]` (anim) | `stage rig\|anim\|full`, `name`, `height`, `no_fingers`, `keep_pose`, `seconds`, `seed`, `steps`, `inplace` |
 
@@ -62,7 +63,7 @@ Outputs by kind (`job.outputs`):
 
 - `model3d`: `glb`, `fbx`, `diffuse_fbx`, `normal_fbx`, `diffuse`, `normal`, `reference` → `{path, url}`
 - `texture`: `texture`, `preview2x2`; `sprite`: `sprite`, `raw`
-- `voice`, `music`: `files: [{path, url, seed, duration, meta?}]` (one per take)
+- `voice`, `music`, `sfx`: `files: [{path, url, seed, duration, meta?}]` (one per take)
 - `video`: `final`, `clips[]`, `keyframes[]`, `project`
 - `anim`: `glb`, `fbx`, `diffuse`, `blend`, `clips: [{name, prompt, seconds, seed, bvh}]`
 - `voice_prep`: `voice: {name, mood}`

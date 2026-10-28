@@ -1,4 +1,5 @@
-"""A persistent generator subprocess speaking one JSON object per line (ai-voc/tts_worker.py, ai-mus/music_worker.py).
+"""A persistent generator subprocess speaking one JSON object per line (ai-voc/tts_worker.py, ai-mus/music_worker.py,
+ai-sfx/sfx_worker.py).
 
 The process keeps its model loaded between requests; `unload` frees the GPU but keeps the process,
 `stop` ends it. One request at a time (the studio worker thread is single-threaded).

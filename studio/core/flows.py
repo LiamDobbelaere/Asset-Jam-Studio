@@ -1,4 +1,4 @@
-"""The generation flows, built on the ai-3d CLIs' prompt builders and the ai-voc / ai-mus worker processes."""
+"""The generation flows, built on the ai-3d CLIs' prompt builders and the ai-voc / ai-mus / ai-sfx worker processes."""
 import os
 import random
 import re
@@ -7,9 +7,10 @@ import time
 
 from . import gpu, paths
 from .comfy import comfy, ComfyError
-from .paths import AIVID, ASSETS, MUS_OUTPUT, SPRITES, TEXTURES, VID_OUTPUT, VOC_OUTPUT, comfy_output_path, file_url
+from .paths import AIVID, ASSETS, MUS_OUTPUT, SFX_OUTPUT, SPRITES, TEXTURES, VID_OUTPUT, VOC_OUTPUT, comfy_output_path, file_url
 from .anim import anim
 from .music import music
+from .sfx import sfx
 from .voice import tts
 
 import generate as gen3d   # ai-3d/scripts (on sys.path via paths)
@@ -167,7 +168,7 @@ class Runner:
             job.set_preview(d["data"], d["mime"])
 
 
-GPU_HEADROOM_MB = 5500   # free VRAM the voice / music / anim workers need before they load
+GPU_HEADROOM_MB = 5500   # free VRAM the voice / music / sfx / anim workers need before they load
 
 
 def _gpu_free_within(seconds, need_mb):
@@ -191,7 +192,7 @@ def take_gpu(job, who):
     memory still is not there. The other workers' unload is checked the same way: a worker can keep its
     VRAM after "unloaded" (CUDA context, tensors still referenced), so if the memory does not come back
     their processes are ended; the next request starts them again."""
-    others = [w for w in (tts, music, anim) if w is not who]
+    others = [w for w in (tts, music, sfx, anim) if w is not who]
     for w in others:
         w.unload()
     # A worker whose models are already resident (the second voice line of a batch) only needs the others'
@@ -246,6 +247,7 @@ def run_comfy(job, api, pct_range=(0, 100)):
     ensure_comfy(job, pct_range[0])
     tts.unload()   # the GPU belongs to ComfyUI now
     music.unload()
+    sfx.unload()
     anim.unload()
     runner = Runner(job, api, pct_range)
     hist = comfy.run(api, runner, should_cancel=lambda: job.cancel_requested)
@@ -540,6 +542,7 @@ def flow_voice_prep(job):
     if not mood:   # Whisper needs the GPU
         tts.unload()
         music.unload()
+        sfx.unload()
         if comfy.alive():
             comfy.free()
     job.add_log("prep_voice " + " ".join(f'"{c}"' if " " in c else c for c in cmd[3:]))
@@ -639,6 +642,62 @@ def flow_music(job):
     job.meta["takes"] = takes
     job.set_progress(100, "Done", f"{takes} take{'s' if takes > 1 else ''}")
 
+
+
+# ---------------------------------------------------------------------------------------------
+# sound effects (MOSS-SoundEffect v2.0 via ai-sfx/scripts/sfx_worker.py)
+
+def flow_sfx(job):
+    p = job.params
+    prompt = (p.get("prompt") or "").strip()
+    if not prompt:
+        raise ValueError("describe the sound")
+    takes = max(1, min(_int(p.get("takes"), 1), 8))
+    seed = _int(p.get("seed"))
+    fmt = p.get("format") or "wav"
+    if fmt not in ("wav", "flac", "ogg"):
+        raise ValueError("format must be wav, flac or ogg")
+    if not os.path.exists(paths.SFX_PY):
+        raise RuntimeError(f"ai-sfx venv not found at {paths.SFX_PY}; run ai-sfx/setup.ps1 first")
+    take_gpu(job, sfx)
+    stem = p.get("name") or slug(prompt)
+    job.meta["name"] = stem
+    job.outputs["files"] = []
+    peak = _float(p.get("peak_db"), -1.0) if p.get("normalize", True) is not False else None
+    for i in range(takes):
+        if job.cancel_requested:
+            raise RuntimeError("cancelled")
+        take_seed = (seed + i) if seed is not None else random.randint(0, 2**31)
+        name = unique_name(SFX_OUTPUT, stem if takes == 1 else f"{stem}_{i + 1}", [".wav", ".flac", ".ogg"])
+        req = {"id": f"{job.id}-{i}", "prompt": prompt, "duration": _float(p.get("duration"), 4.0), "seed": take_seed,
+               "steps": _int(p.get("steps"), 50), "cfg": _float(p.get("cfg"), 4.0), "shift": _float(p.get("shift"), 5.0),
+               "negative": p.get("negative") or "", "loop": bool(p.get("loop")), "crossfade": _float(p.get("crossfade"), 1.0),
+               "trim": p.get("trim", True) is not False, "peak_db": peak, "highpass": _float(p.get("highpass"), 30.0),
+               "format": fmt, "out": os.path.join(SFX_OUTPUT, name)}
+        lo, hi = 2 + 98 * i / takes, 2 + 98 * (i + 1) / takes
+        label = f"take {i + 1}/{takes}" if takes > 1 else ""
+
+        def on_event(kind, **d):
+            if kind == "log":
+                job.add_log(d["message"])
+                job.set_progress(lo, "Starting sfx worker", d["message"], force=True)
+            elif kind == "loading":
+                job.set_progress(lo + 2, "Loading MOSS-SoundEffect", d.get("what") or "", force=True)
+            elif kind == "progress":
+                r = d.get("ratio") or 0
+                job.set_progress(lo + 5 + (hi - lo - 6) * r, "Generating", f"{label} {d.get('what') or ''}".strip(), force=True)
+            elif kind == "tick":
+                job.set_progress(None, None, f"{label} {d['seconds']:.0f}s".strip())
+
+        msg = sfx.request(req, on_event, should_cancel=lambda: job.cancel_requested)
+        f = {"path": msg["path"], "url": file_url(msg["path"]), "seed": take_seed, "duration": msg.get("duration"),
+             "seconds": msg.get("seconds")}
+        job.outputs["files"].append(f)
+        job.add_log(f"take {i + 1}: {msg.get('duration')} s of sound in {msg.get('seconds')} s, seed {take_seed}, "
+                    f"peak VRAM {msg.get('peak_vram_gb')} GB -> {msg['path']}")
+        job.publish(force=True)
+    job.meta["takes"] = takes
+    job.set_progress(100, "Done", f"{takes} take{'s' if takes > 1 else ''}")
 
 
 # ---------------------------------------------------------------------------------------------
@@ -801,10 +860,10 @@ def flow_anim(job):
 
 
 FLOWS = {"model3d": flow_model3d, "texture": flow_texture, "sprite": flow_sprite, "voice": flow_voice, "voice_prep": flow_voice_prep,
-         "music": flow_music, "video": flow_video, "anim": flow_anim}
+         "music": flow_music, "sfx": flow_sfx, "video": flow_video, "anim": flow_anim}
 
 
-WORKER_OF = {"voice": tts, "voice_prep": tts, "music": music, "anim": anim}
+WORKER_OF = {"voice": tts, "voice_prep": tts, "music": music, "sfx": sfx, "anim": anim}
 
 
 class Flows:

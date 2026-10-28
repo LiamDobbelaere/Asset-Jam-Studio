@@ -1,5 +1,5 @@
 """Asset Jam Studio: a local web front-end and HTTP API for ai-3d (3D props, world textures, 2D sprites),
-ai-voc (voices), ai-mus (music), ai-vid (videos from a shot list) and ai-anim (rigged, animated characters).
+ai-voc (voices), ai-mus (music), ai-sfx (sound effects), ai-vid (videos from a shot list) and ai-anim (rigged, animated characters).
 
     studio.bat            then open http://127.0.0.1:8765
 
@@ -30,12 +30,13 @@ from core.comfy import comfy  # noqa: E402
 from core.flows import Flows  # noqa: E402
 from core.jobs import Job, Worker, store  # noqa: E402
 from core.music import PROMPT_TIPS as MUSIC_TIPS, available_models, music  # noqa: E402
+from core.sfx import PROMPT_TIPS as SFX_TIPS, readiness as sfx_readiness, sfx  # noqa: E402
 from core.paths import FILE_ROOTS, UPLOADS, WEB, file_url  # noqa: E402
 from core.voice import TEXT_TIPS, list_voices, save_clip_texts, save_ref_text, tts, voice_clips  # noqa: E402
 
 VERSION = "1.1"
 MAX_WAIT = 600          # longest a single GET /api/jobs/<id>/wait may block, in seconds
-WORKERS = {"tts": tts, "music": music, "anim": anim}
+WORKERS = {"tts": tts, "music": music, "sfx": sfx, "anim": anim}
 
 mimetypes.add_type("model/gltf-binary", ".glb")
 mimetypes.add_type("application/javascript", ".js")
@@ -59,6 +60,7 @@ def system_state():
         "comfy": {"alive": comfy.alive(), "process": comfy.process_state(), "queue": comfy.queue_info(), "url": comfy.url},
         "tts": tts.state(),
         "music": music.state(),
+        "sfx": sfx.state(),
         "anim": anim.state(),
         "gpu": gpu.state(),
         "running": cur.id if cur else None,
@@ -71,7 +73,7 @@ def _system_broadcast():
     last = None
     while True:
         s = system_state()
-        key = json.dumps({k: s[k] for k in ("comfy", "tts", "music", "anim", "gpu", "running", "queued")}, sort_keys=True)
+        key = json.dumps({k: s[k] for k in ("comfy", "tts", "music", "sfx", "anim", "gpu", "running", "queued")}, sort_keys=True)
         if key != last:
             last = key
             bus.publish({"type": "system", "system": s})
@@ -172,7 +174,7 @@ def api_job_preview(h, q, body, job_id):
 
 
 LIBRARIES = {"models": library.models, "textures": library.textures, "sprites": library.sprites, "voice": library.voice_takes,
-             "music": library.music_tracks, "videos": library.videos, "characters": library.characters}
+             "music": library.music_tracks, "sfx": library.sfx_sounds, "videos": library.videos, "characters": library.characters}
 
 
 def api_library(h, q, body, name):
@@ -188,6 +190,10 @@ def api_presets3d(h, q, body):
 
 def api_music(h, q, body):
     return {"models": available_models(), "tips": MUSIC_TIPS}
+
+
+def api_sfx(h, q, body):
+    return {"ready": sfx_readiness(), "tips": SFX_TIPS}
 
 
 def api_video(h, q, body):
@@ -309,9 +315,9 @@ ROUTES = {
         (r"/api/jobs", api_jobs_list), (r"/api/jobs/(?P<job_id>[\w\-]+)", api_job),
         (r"/api/jobs/(?P<job_id>[\w\-]+)/wait", api_job_wait), (r"/api/jobs/(?P<job_id>[\w\-]+)/preview", api_job_preview),
         (r"/api/library/(?P<name>\w+)", api_library), (r"/api/presets3d", api_presets3d),
-        (r"/api/music", api_music), (r"/api/video", api_video), (r"/api/anim", api_anim), (r"/api/voices", api_voices),
+        (r"/api/music", api_music), (r"/api/sfx", api_sfx), (r"/api/video", api_video), (r"/api/anim", api_anim), (r"/api/voices", api_voices),
         (r"/api/voices/(?P<name>[\w\-]+)/clips", api_voice_clips),
-        (r"/api/comfy/log", api_comfy_log), (r"/api/(?P<name>tts|music|anim)/log", api_worker_log),
+        (r"/api/comfy/log", api_comfy_log), (r"/api/(?P<name>tts|music|sfx|anim)/log", api_worker_log),
     ],
     "POST": [
         (r"/api/jobs", api_jobs_create), (r"/api/jobs/(?P<job_id>[\w\-]+)/cancel", api_job_cancel),
@@ -319,7 +325,7 @@ ROUTES = {
         (r"/api/voices/(?P<name>[\w\-]+)/clips", api_voice_clips_save),
         (r"/api/comfy/start", api_comfy_start), (r"/api/comfy/stop", api_comfy_stop), (r"/api/comfy/free", api_comfy_free),
         (r"/api/comfy/interrupt", api_comfy_interrupt),
-        (r"/api/(?P<name>tts|music|anim)/stop", api_worker_stop), (r"/api/(?P<name>tts|music|anim)/unload", api_worker_unload),
+        (r"/api/(?P<name>tts|music|sfx|anim)/stop", api_worker_stop), (r"/api/(?P<name>tts|music|sfx|anim)/unload", api_worker_unload),
         (r"/api/thumb", api_thumb), (r"/api/upload", api_upload), (r"/api/reveal", api_reveal),
     ],
 }
@@ -517,6 +523,7 @@ def main():
     finally:
         tts.stop()
         music.stop()
+        sfx.stop()
         anim.stop()
         if comfy.started_by_us:
             comfy.stop()

@@ -1,10 +1,10 @@
-"""What is on disk: generated models, textures, sprites, voice takes and music, joined with the jobs that made them."""
+"""What is on disk: generated models, textures, sprites, voice takes, music and sound effects, joined with the jobs that made them."""
 import os
 import time
 
 import json
 
-from .paths import ASSETS, MUS_OUTPUT, SPRITES, TEXTURES, THUMBS, VOC_OUTPUT, COMFY_OUTPUT, file_url
+from .paths import ASSETS, MUS_OUTPUT, SFX_OUTPUT, SPRITES, TEXTURES, THUMBS, VOC_OUTPUT, COMFY_OUTPUT, file_url
 from .voice import wav_duration
 
 import texture as gentex   # ai-3d/scripts: the style suffixes the CLIs append
@@ -187,6 +187,27 @@ def music_tracks(store):
                         if os.path.abspath(f["path"]) == os.path.abspath(p):
                             e["seed"] = f.get("seed")
                             e["meta"] = f.get("meta") or {}
+                out.append(e)
+    out.sort(key=lambda e: e["mtime"], reverse=True)
+    return out
+
+
+def sfx_sounds(store):
+    idx = store.by_output_path()
+    out = []
+    if os.path.isdir(SFX_OUTPUT):
+        for fn in os.listdir(SFX_OUTPUT):
+            if fn.lower().endswith((".wav", ".flac", ".ogg")):
+                p = os.path.join(SFX_OUTPUT, fn)
+                e = _entry(p, idx.get(os.path.abspath(p)))
+                e["duration"] = audio_duration(p)
+                if e["job"]:
+                    pr = e["job"]["params"]
+                    e["prompt"] = pr.get("prompt")
+                    e["loop"] = bool(pr.get("loop"))
+                    for f in e["job"]["outputs"].get("files", []):
+                        if os.path.abspath(f["path"]) == os.path.abspath(p):
+                            e["seed"] = f.get("seed")
                 out.append(e)
     out.sort(key=lambda e: e["mtime"], reverse=True)
     return out

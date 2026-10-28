@@ -14,7 +14,7 @@ order; each one ends with a check. Every module except `ai-3d` is optional, so i
 | Disk | ~105 GB for all modules (measured), plan ~130 GB free with the uv cache and your outputs | per module below; NVMe recommended, models load from disk on every job |
 | git | on PATH | `winget install --id Git.Git --exact` |
 | uv | on PATH | `winget install --id astral-sh.uv --exact`; uv downloads Python 3.12 itself, no system Python needed |
-| ffmpeg | on PATH (or `C:\ffmpeg\bin\ffmpeg.exe`, or the `FFMPEG` env var) | `winget install --id Gyan.FFmpeg --exact`; needed by ai-vid, by ai-mus for `.ogg` output and by ai-voc for `.mp3` voice recordings |
+| ffmpeg | on PATH (or `C:\ffmpeg\bin\ffmpeg.exe`, or the `FFMPEG` env var) | `winget install --id Gyan.FFmpeg --exact`; needed by ai-vid, by ai-mus and ai-sfx for `.ogg` output and by ai-voc for `.mp3` voice recordings |
 | Blender 5.1 | `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe`, or the `BLENDER` env var | `winget install --id BlenderFoundation.Blender --exact --version 5.1.2` (the tested version; installs to the default path). Needed by ai-3d's `gameasset` / `character` presets (FBX export + planar dissolve) and by ai-anim |
 | Hugging Face account | only for ai-anim's text-to-motion clips | access to the gated [meta-llama/Meta-Llama-3-8B-Instruct](https://huggingface.co/meta-llama/Meta-Llama-3-8B-Instruct) repo (step 6) |
 
@@ -40,6 +40,7 @@ the download if you want to fetch weights later by re-running the script.
 | 2 (optional, needs 1) | `powershell -ExecutionPolicy Bypass -File ai-vid\setup.ps1` | the Wan 2.2 node + workflow inside ai-3d's ComfyUI; Wan 2.2 TI2V-5B weights | 17 GB |
 | 3 (optional) | `powershell -ExecutionPolicy Bypass -File ai-voc\setup.ps1` | Qwen3-TTS + Whisper in `ai-voc\.venv` | 6.4 GB models + 3.7 GB venv |
 | 4 (optional) | `powershell -ExecutionPolicy Bypass -File ai-mus\setup.ps1` | ACE-Step 1.5 at a pinned commit in `ai-mus\.venv` (torch 2.7.1+cu128, the build ACE-Step pins) | 11 GB models + 6 GB venv |
+| 4b (optional) | `powershell -ExecutionPolicy Bypass -File ai-sfx\setup.ps1` | MOSS-SoundEffect v2.0 (OpenMOSS MOSS-TTS repo at a pinned commit) in `ai-sfx\.venv` (torch 2.9.0+cu128, the build upstream pins) | 11 GB model + venv |
 | 5 (optional) | `powershell -ExecutionPolicy Bypass -File ai-anim\setup.ps1` | Make-It-Animatable + NVIDIA Kimodo at pinned commits in `ai-anim\.venv` | 2.3 GB weights + 3.4 GB venv now, 16.5 GB more in the Hugging Face cache on the first animation (step 3) |
 
 The venv sizes above are already counted in the total. uv also keeps a cache of downloaded wheels in `%LOCALAPPDATA%\uv\cache` (`uv cache clean` frees it after setup).
@@ -89,7 +90,7 @@ README has examples.
 | Variable | Default | Used for |
 |---|---|---|
 | `BLENDER` | `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe` | FBX export (ai-3d) and rigging / retargeting (ai-anim) |
-| `FFMPEG` | `ffmpeg` on PATH, else `C:\ffmpeg\bin\ffmpeg.exe` | video assembly, logo reveals, `.ogg` music |
+| `FFMPEG` | `ffmpeg` on PATH, else `C:\ffmpeg\bin\ffmpeg.exe` | video assembly, logo reveals, `.ogg` music and sound effects |
 | `STUDIO_URL` | `http://127.0.0.1:8765` | where `studio_cli.py` (and the Claude skill) find the studio |
 | `CIVITAI_TOKEN` | unset | optional texture LoRA download |
 | `HF_HOME` | `%USERPROFILE%\.cache\huggingface` | where ai-anim's Hugging Face downloads and token live |

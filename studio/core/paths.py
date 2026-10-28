@@ -1,4 +1,4 @@
-"""Where everything lives. The studio sits next to ai-3d/, ai-voc/, ai-mus/ and ai-vid/ in the repository."""
+"""Where everything lives. The studio sits next to ai-3d/, ai-voc/, ai-mus/, ai-sfx/ and ai-vid/ in the repository."""
 import os
 import sys
 
@@ -7,12 +7,14 @@ REPO = os.path.dirname(STUDIO)
 AI3D = os.path.join(REPO, "ai-3d")
 AIVOC = os.path.join(REPO, "ai-voc")
 AIMUS = os.path.join(REPO, "ai-mus")
+AISFX = os.path.join(REPO, "ai-sfx")
 AIVID = os.path.join(REPO, "ai-vid")
 AIANIM = os.path.join(REPO, "ai-anim")
 COMFY = os.path.join(AI3D, "ComfyUI")
 COMFY_PY = os.path.join(COMFY, ".venv", "Scripts", "python.exe")
 VOC_PY = os.path.join(AIVOC, ".venv", "Scripts", "python.exe")
 MUS_PY = os.path.join(AIMUS, ".venv", "Scripts", "python.exe")
+SFX_PY = os.path.join(AISFX, ".venv", "Scripts", "python.exe")
 ANIM_PY = os.path.join(AIANIM, ".venv", "Scripts", "python.exe")
 
 ASSETS = os.path.join(AI3D, "assets")
@@ -24,6 +26,7 @@ COMFY_INPUT = os.path.join(COMFY, "input")
 VOC_OUTPUT = os.path.join(AIVOC, "output")
 VOICES = os.path.join(AIVOC, "voices")
 MUS_OUTPUT = os.path.join(AIMUS, "output")
+SFX_OUTPUT = os.path.join(AISFX, "output")
 VID_OUTPUT = os.path.join(AIVID, "output")
 VID_SHOTS = os.path.join(AIVID, "shots")
 CHARACTERS = os.path.join(AIANIM, "assets")
@@ -42,6 +45,7 @@ FILE_ROOTS = {
     "voc-output": VOC_OUTPUT,
     "voices": VOICES,
     "mus-output": MUS_OUTPUT,
+    "sfx-output": SFX_OUTPUT,
     "vid-output": VID_OUTPUT,
     "vid-assets": os.path.join(AIVID, "assets"),
     "characters": CHARACTERS,
@@ -50,7 +54,7 @@ FILE_ROOTS = {
     "intermediates": INTERMEDIATES,
 }
 
-for d in (JOBS, UPLOADS, THUMBS, INTERMEDIATES, TEXTURES, SPRITES, VOC_OUTPUT, MUS_OUTPUT, VID_OUTPUT, CHARACTERS):
+for d in (JOBS, UPLOADS, THUMBS, INTERMEDIATES, TEXTURES, SPRITES, VOC_OUTPUT, MUS_OUTPUT, SFX_OUTPUT, VID_OUTPUT, CHARACTERS):
     os.makedirs(d, exist_ok=True)
 
 # make the ai-3d CLIs importable (generate.py, texture.py, sprite.py) and the ai-vid ones (shot.py, intro.py)

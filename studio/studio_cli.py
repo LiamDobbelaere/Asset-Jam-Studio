@@ -8,10 +8,10 @@
     python studio_cli.py jobs [--status queued|running|done|error|cancelled] [--kind music] [--limit 20]
     python studio_cli.py cancel <job id>
     python studio_cli.py voices                              prepared voices and their moods
-    python studio_cli.py library models|textures|sprites|voice|music|videos|characters
+    python studio_cli.py library models|textures|sprites|voice|music|sfx|videos|characters
     python studio_cli.py upload <file>                       copy a file into the studio (for *_upload parameters)
     python studio_cli.py comfy start|stop|free
-    python studio_cli.py worker tts|music|anim stop|unload
+    python studio_cli.py worker tts|music|sfx|anim stop|unload
 
 Flags for `submit` come from the schema: scalar parameters are plain flags (--prompt "x" --width 512 --loop true),
 list/object parameters take JSON (--shots '[{"id": ...}]', --clips '[...]'). `--params '{"prompt": ...}'` or
@@ -145,11 +145,11 @@ def main(argv=None):
     s = sub.add_parser("jobs"); s.add_argument("--status"); s.add_argument("--kind"); s.add_argument("--limit", type=int, default=20)
     s = sub.add_parser("cancel"); s.add_argument("id")
     sub.add_parser("voices")
-    s = sub.add_parser("library"); s.add_argument("name", choices=["models", "textures", "sprites", "voice", "music", "videos", "characters"])
+    s = sub.add_parser("library"); s.add_argument("name", choices=["models", "textures", "sprites", "voice", "music", "sfx", "videos", "characters"])
     s = sub.add_parser("upload"); s.add_argument("file")
     s = sub.add_parser("comfy"); s.add_argument("action", choices=["start", "stop", "free"])
     s = sub.add_parser("worker", help="end a worker process (stop) or just drop its models (unload)")
-    s.add_argument("name", choices=["tts", "music", "anim"]); s.add_argument("action", choices=["stop", "unload"])
+    s.add_argument("name", choices=["tts", "music", "sfx", "anim"]); s.add_argument("action", choices=["stop", "unload"])
 
     # `submit <kind>` gets its flags from the live schema, so parse in two steps
     if argv[:1] == ["submit"] and len(argv) > 1 and not argv[1].startswith("-"):

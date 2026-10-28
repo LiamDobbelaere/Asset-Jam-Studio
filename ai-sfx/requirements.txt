@@ -1,0 +1,15 @@
+# torch/torchaudio come from the cu128 index in setup.ps1 (2.9.0+cu128: the pin MOSS-SoundEffect v2 ships)
+# moss_soundeffect_v2 itself is installed from the clone with --no-deps; this is its inference subset
+# (no gradio demo, no fine-tuning extras: the studio and sfx.py call the pipeline directly)
+numpy==1.26.4
+einops==0.8.2
+safetensors==0.7.0
+transformers==4.57.1
+diffusers==0.37.1
+ftfy==6.3.1
+regex
+soundfile==0.13.1
+pillow
+tqdm
+descript-audiotools==0.7.2
+huggingface_hub[hf_transfer]==0.36.2

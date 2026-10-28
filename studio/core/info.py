@@ -6,6 +6,7 @@ import shutil
 from . import paths
 from .anim import readiness as anim_readiness
 from .music import available_models
+from .sfx import readiness as sfx_readiness
 from .paths import VID_SHOTS
 
 VIDEO_WEIGHTS = (("diffusion_models", "wan2.2_ti2v_5B_fp16.safetensors"), ("vae", "wan2.2_vae.safetensors"),
@@ -62,6 +63,7 @@ def readiness(comfy_alive):
                   "note": "needed by model3d, texture, sprite, video; start it with POST /api/comfy/start (takes ~20 s)"},
         "voice": {"installed": os.path.isfile(paths.VOC_PY), "voices": os.path.isdir(paths.VOICES) and bool(os.listdir(paths.VOICES))},
         "music": {"installed": mus["ready"], "lms": mus["lms"], "dits": mus["dits"]},
+        "sfx": {"installed": sfx_readiness()["ready"]},
         "video": {"installed": os.path.isfile(paths.COMFY_PY) and video_models_present(), "ffmpeg": os.path.isfile(ffmpeg_path())},
         "anim": {"installed": an["ready"], "hf_token": an["hf_token"],
                  "note": "clips need the Hugging Face token for Llama 3 (rigging works without it)"},
