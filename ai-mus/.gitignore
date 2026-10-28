@@ -1,0 +1,13 @@
+# ACE-Step 1.5 checkout, environment and weights: recreated by setup.ps1
+ACE-Step-1.5/
+.venv/
+models/
+.cache/
+
+# generated music (folder kept, contents ignored)
+output/*
+!output/.gitkeep
+
+__pycache__/
+*.pyc
+*.log

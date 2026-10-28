@@ -1,0 +1,201 @@
+{
+ "1": {
+  "inputs": {
+   "unet_name": "wan2.2_ti2v_5B_fp16.safetensors",
+   "weight_dtype": "default"
+  },
+  "class_type": "UNETLoader",
+  "_meta": {
+   "title": "Wan 2.2 TI2V-5B (fp16)"
+  }
+ },
+ "2": {
+  "inputs": {
+   "clip_name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+   "type": "wan",
+   "device": "default"
+  },
+  "class_type": "CLIPLoader",
+  "_meta": {
+   "title": "umT5-XXL text encoder"
+  }
+ },
+ "3": {
+  "inputs": {
+   "vae_name": "wan2.2_vae.safetensors"
+  },
+  "class_type": "VAELoader",
+  "_meta": {
+   "title": "Wan 2.2 VAE"
+  }
+ },
+ "4": {
+  "inputs": {
+   "model": [
+    "1",
+    0
+   ],
+   "shift": 8.0
+  },
+  "class_type": "ModelSamplingSD3",
+  "_meta": {
+   "title": "Shift 8"
+  }
+ },
+ "5": {
+  "inputs": {
+   "text": "A single black water droplet falls into still dark water and lands with a splash, concentric ripples spread outward, high contrast, minimal, cinematic lighting, smooth slow motion",
+   "clip": [
+    "2",
+    0
+   ]
+  },
+  "class_type": "CLIPTextEncode",
+  "_meta": {
+   "title": "PROMPT (what happens in the shot)"
+  }
+ },
+ "6": {
+  "inputs": {
+   "text": "bright colors, overexposed, static, blurred details, subtitles, style, artwork, painting, picture, still, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, malformed limbs, fused fingers, still picture, cluttered background, three legs, many people in the background, walking backwards",
+   "clip": [
+    "2",
+    0
+   ]
+  },
+  "class_type": "CLIPTextEncode",
+  "_meta": {
+   "title": "NEGATIVE"
+  }
+ },
+ "10": {
+  "inputs": {
+   "image": "aivid_start.png",
+   "upload": "image"
+  },
+  "class_type": "LoadImage",
+  "_meta": {
+   "title": "START frame (optional)"
+  }
+ },
+ "11": {
+  "inputs": {
+   "image": "aivid_end.png",
+   "upload": "image"
+  },
+  "class_type": "LoadImage",
+  "_meta": {
+   "title": "END frame (optional)"
+  }
+ },
+ "20": {
+  "inputs": {
+   "vae": [
+    "3",
+    0
+   ],
+   "width": 832,
+   "height": 480,
+   "length": 73,
+   "batch_size": 1,
+   "start_image": [
+    "10",
+    0
+   ],
+   "end_image": [
+    "11",
+    0
+   ]
+  },
+  "class_type": "AIVidWan22FirstLastFrameToVideoLatent",
+  "_meta": {
+   "title": "Video latent (first + last frame)"
+  }
+ },
+ "30": {
+  "inputs": {
+   "model": [
+    "4",
+    0
+   ],
+   "positive": [
+    "5",
+    0
+   ],
+   "negative": [
+    "6",
+    0
+   ],
+   "latent_image": [
+    "20",
+    0
+   ],
+   "seed": 0,
+   "steps": 20,
+   "cfg": 5.0,
+   "sampler_name": "uni_pc",
+   "scheduler": "simple",
+   "denoise": 1.0
+  },
+  "class_type": "KSampler",
+  "_meta": {
+   "title": "Sample (20 steps, CFG 5, uni_pc)"
+  }
+ },
+ "31": {
+  "inputs": {
+   "samples": [
+    "30",
+    0
+   ],
+   "vae": [
+    "3",
+    0
+   ]
+  },
+  "class_type": "VAEDecode",
+  "_meta": {
+   "title": "Decode frames"
+  }
+ },
+ "40": {
+  "inputs": {
+   "filename_prefix": "aivid/frames/f",
+   "images": [
+    "31",
+    0
+   ]
+  },
+  "class_type": "SaveImage",
+  "_meta": {
+   "title": "Save frames (PNG)"
+  }
+ },
+ "41": {
+  "inputs": {
+   "image": [
+    "31",
+    0
+   ],
+   "batch_index": 72,
+   "length": 1
+  },
+  "class_type": "ImageFromBatch",
+  "_meta": {
+   "title": "Last frame"
+  }
+ },
+ "42": {
+  "inputs": {
+   "filename_prefix": "aivid/last/f",
+   "images": [
+    "41",
+    0
+   ]
+  },
+  "class_type": "SaveImage",
+  "_meta": {
+   "title": "Save last frame"
+  }
+ }
+}

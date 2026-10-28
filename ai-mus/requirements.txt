@@ -1,0 +1,23 @@
+# torch/torchaudio/torchvision come from the cu128 index in setup.ps1 (2.7.1+cu128: the pin ACE-Step 1.5 ships for Windows)
+# ACE-Step 1.5 itself is installed from the clone with --no-deps; this is its runtime subset
+# (no gradio / fastapi / nano-vllm / training stack: the studio and compose.py call the Python API directly)
+transformers==4.57.3
+diffusers>=0.37.0
+accelerate>=1.12.0
+einops>=0.8.1
+loguru>=0.7.3
+soundfile>=0.13.1
+scipy>=1.10.1
+numba>=0.63.1
+vector-quantize-pytorch>=1.27.15
+pytorch-wavelets>=1.3.0
+pywavelets>=1.9.0
+toml
+pyyaml
+tqdm
+xxhash
+diskcache
+python-dotenv
+pydantic
+safetensors==0.7.0
+huggingface_hub[hf_transfer]==0.36.2

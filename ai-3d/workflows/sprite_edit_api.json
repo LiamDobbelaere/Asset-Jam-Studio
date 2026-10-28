@@ -1,0 +1,702 @@
+{
+ "1": {
+  "inputs": {
+   "unet_name": "flux-2-klein-4b-fp8.safetensors",
+   "weight_dtype": "default"
+  },
+  "class_type": "UNETLoader",
+  "_meta": {
+   "title": "FLUX.2 klein 4B (distilled fp8)"
+  }
+ },
+ "2": {
+  "inputs": {
+   "clip_name": "qwen_3_4b_fp8_mixed.safetensors",
+   "type": "flux2",
+   "device": "default"
+  },
+  "class_type": "CLIPLoader",
+  "_meta": {
+   "title": "Qwen3-4B text encoder"
+  }
+ },
+ "3": {
+  "inputs": {
+   "vae_name": "flux2-vae.safetensors"
+  },
+  "class_type": "VAELoader",
+  "_meta": {
+   "title": "FLUX.2 VAE"
+  }
+ },
+ "5": {
+  "inputs": {
+   "text": "Redraw the character from image 1 sitting on the office chair from image 2, facing the camera, southeast isometric view, same character design, same art style, same line weight and colours, plain white background",
+   "clip": [
+    "2",
+    0
+   ]
+  },
+  "class_type": "CLIPTextEncode",
+  "_meta": {
+   "title": "PROMPT (what the finished sprite shows)"
+  }
+ },
+ "6": {
+  "inputs": {
+   "conditioning": [
+    "5",
+    0
+   ]
+  },
+  "class_type": "ConditioningZeroOut",
+  "_meta": {
+   "title": "Negative (distilled: zeroed)"
+  }
+ },
+ "7": {
+  "inputs": {
+   "text": "blurry, photo, realistic, 3d render, extra limbs, text, watermark, drop shadow on the ground",
+   "clip": [
+    "2",
+    0
+   ]
+  },
+  "class_type": "CLIPTextEncode",
+  "_meta": {
+   "title": "NEGATIVE (base model only)"
+  }
+ },
+ "10": {
+  "inputs": {
+   "image": "sprite_source.png",
+   "upload": "image"
+  },
+  "class_type": "LoadImage",
+  "_meta": {
+   "title": "SOURCE (image 1)"
+  }
+ },
+ "11": {
+  "inputs": {
+   "image": [
+    "10",
+    0
+   ],
+   "upscale_method": "lanczos",
+   "megapixels": 1.0,
+   "resolution_steps": 16
+  },
+  "class_type": "ImageScaleToTotalPixels",
+  "_meta": {
+   "title": "Scale source to 1 MP"
+  }
+ },
+ "12": {
+  "inputs": {
+   "image": [
+    "11",
+    0
+   ]
+  },
+  "class_type": "GetImageSize",
+  "_meta": {
+   "title": "Output size = source size"
+  }
+ },
+ "13": {
+  "inputs": {
+   "pixels": [
+    "11",
+    0
+   ],
+   "vae": [
+    "3",
+    0
+   ]
+  },
+  "class_type": "VAEEncode",
+  "_meta": {
+   "title": "Encode source"
+  }
+ },
+ "14": {
+  "inputs": {
+   "conditioning": [
+    "5",
+    0
+   ],
+   "latent": [
+    "13",
+    0
+   ]
+  },
+  "class_type": "ReferenceLatent",
+  "_meta": {
+   "title": "Attach source (positive)"
+  }
+ },
+ "15": {
+  "inputs": {
+   "conditioning": [
+    "6",
+    0
+   ],
+   "latent": [
+    "13",
+    0
+   ]
+  },
+  "class_type": "ReferenceLatent",
+  "_meta": {
+   "title": "Attach source (negative, zeroed)"
+  }
+ },
+ "16": {
+  "inputs": {
+   "conditioning": [
+    "7",
+    0
+   ],
+   "latent": [
+    "13",
+    0
+   ]
+  },
+  "class_type": "ReferenceLatent",
+  "_meta": {
+   "title": "Attach source (negative, base)"
+  }
+ },
+ "20": {
+  "inputs": {
+   "image": "sprite_ref2.png",
+   "upload": "image"
+  },
+  "class_type": "LoadImage",
+  "_meta": {
+   "title": "REF 2 (image 2, optional)"
+  }
+ },
+ "21": {
+  "inputs": {
+   "image": [
+    "20",
+    0
+   ],
+   "upscale_method": "lanczos",
+   "megapixels": 1.0,
+   "resolution_steps": 16
+  },
+  "class_type": "ImageScaleToTotalPixels",
+  "_meta": {
+   "title": "Scale ref 2"
+  }
+ },
+ "22": {
+  "inputs": {
+   "pixels": [
+    "21",
+    0
+   ],
+   "vae": [
+    "3",
+    0
+   ]
+  },
+  "class_type": "VAEEncode",
+  "_meta": {
+   "title": "Encode ref 2"
+  }
+ },
+ "23": {
+  "inputs": {
+   "conditioning": [
+    "14",
+    0
+   ],
+   "latent": [
+    "22",
+    0
+   ]
+  },
+  "class_type": "ReferenceLatent",
+  "_meta": {
+   "title": "Attach ref 2 (positive)"
+  }
+ },
+ "24": {
+  "inputs": {
+   "conditioning": [
+    "15",
+    0
+   ],
+   "latent": [
+    "22",
+    0
+   ]
+  },
+  "class_type": "ReferenceLatent",
+  "_meta": {
+   "title": "Attach ref 2 (negative, zeroed)"
+  }
+ },
+ "25": {
+  "inputs": {
+   "conditioning": [
+    "16",
+    0
+   ],
+   "latent": [
+    "22",
+    0
+   ]
+  },
+  "class_type": "ReferenceLatent",
+  "_meta": {
+   "title": "Attach ref 2 (negative, base)"
+  }
+ },
+ "30": {
+  "inputs": {
+   "image": "sprite_ref3.png",
+   "upload": "image"
+  },
+  "class_type": "LoadImage",
+  "_meta": {
+   "title": "REF 3 (image 3, optional)"
+  }
+ },
+ "31": {
+  "inputs": {
+   "image": [
+    "30",
+    0
+   ],
+   "upscale_method": "lanczos",
+   "megapixels": 1.0,
+   "resolution_steps": 16
+  },
+  "class_type": "ImageScaleToTotalPixels",
+  "_meta": {
+   "title": "Scale ref 3"
+  }
+ },
+ "32": {
+  "inputs": {
+   "pixels": [
+    "31",
+    0
+   ],
+   "vae": [
+    "3",
+    0
+   ]
+  },
+  "class_type": "VAEEncode",
+  "_meta": {
+   "title": "Encode ref 3"
+  }
+ },
+ "33": {
+  "inputs": {
+   "conditioning": [
+    "23",
+    0
+   ],
+   "latent": [
+    "32",
+    0
+   ]
+  },
+  "class_type": "ReferenceLatent",
+  "_meta": {
+   "title": "Attach ref 3 (positive)"
+  }
+ },
+ "34": {
+  "inputs": {
+   "conditioning": [
+    "24",
+    0
+   ],
+   "latent": [
+    "32",
+    0
+   ]
+  },
+  "class_type": "ReferenceLatent",
+  "_meta": {
+   "title": "Attach ref 3 (negative, zeroed)"
+  }
+ },
+ "35": {
+  "inputs": {
+   "conditioning": [
+    "25",
+    0
+   ],
+   "latent": [
+    "32",
+    0
+   ]
+  },
+  "class_type": "ReferenceLatent",
+  "_meta": {
+   "title": "Attach ref 3 (negative, base)"
+  }
+ },
+ "40": {
+  "inputs": {
+   "width": [
+    "12",
+    0
+   ],
+   "height": [
+    "12",
+    1
+   ],
+   "batch_size": 1
+  },
+  "class_type": "EmptyFlux2LatentImage",
+  "_meta": {
+   "title": "Canvas (source size)"
+  }
+ },
+ "41": {
+  "inputs": {
+   "steps": 4,
+   "width": [
+    "12",
+    0
+   ],
+   "height": [
+    "12",
+    1
+   ]
+  },
+  "class_type": "Flux2Scheduler",
+  "_meta": {
+   "title": "Sigmas"
+  }
+ },
+ "42": {
+  "inputs": {
+   "sampler_name": "euler"
+  },
+  "class_type": "KSamplerSelect",
+  "_meta": {
+   "title": "KSamplerSelect"
+  }
+ },
+ "43": {
+  "inputs": {
+   "noise_seed": 0
+  },
+  "class_type": "RandomNoise",
+  "_meta": {
+   "title": "RandomNoise"
+  }
+ },
+ "44": {
+  "inputs": {
+   "cfg": 1.0,
+   "model": [
+    "1",
+    0
+   ],
+   "positive": [
+    "33",
+    0
+   ],
+   "negative": [
+    "34",
+    0
+   ]
+  },
+  "class_type": "CFGGuider",
+  "_meta": {
+   "title": "Guider (distilled: CFG 1)"
+  }
+ },
+ "45": {
+  "inputs": {
+   "noise": [
+    "43",
+    0
+   ],
+   "guider": [
+    "44",
+    0
+   ],
+   "sampler": [
+    "42",
+    0
+   ],
+   "sigmas": [
+    "41",
+    0
+   ],
+   "latent_image": [
+    "40",
+    0
+   ]
+  },
+  "class_type": "SamplerCustomAdvanced",
+  "_meta": {
+   "title": "Sample (edit)"
+  }
+ },
+ "46": {
+  "inputs": {
+   "samples": [
+    "45",
+    0
+   ],
+   "vae": [
+    "3",
+    0
+   ]
+  },
+  "class_type": "VAEDecode",
+  "_meta": {
+   "title": "Decode"
+  }
+ },
+ "47": {
+  "inputs": {
+   "filename_prefix": "sprite/raw",
+   "images": [
+    "46",
+    0
+   ]
+  },
+  "class_type": "SaveImage",
+  "_meta": {
+   "title": "Save painted result"
+  }
+ },
+ "50": {
+  "inputs": {
+   "bg_removal_name": "birefnet.safetensors"
+  },
+  "class_type": "LoadBackgroundRemovalModel",
+  "_meta": {
+   "title": "BiRefNet"
+  }
+ },
+ "51": {
+  "inputs": {
+   "bg_removal_model": [
+    "50",
+    0
+   ],
+   "image": [
+    "46",
+    0
+   ]
+  },
+  "class_type": "RemoveBackground",
+  "_meta": {
+   "title": "Cut out the sprite"
+  }
+ },
+ "53": {
+  "inputs": {
+   "mask": [
+    "51",
+    0
+   ]
+  },
+  "class_type": "InvertMask",
+  "_meta": {
+   "title": "Invert (JoinImageWithAlpha expects 1 = transparent)"
+  }
+ },
+ "54": {
+  "inputs": {
+   "image": [
+    "46",
+    0
+   ],
+   "alpha": [
+    "53",
+    0
+   ]
+  },
+  "class_type": "JoinImageWithAlpha",
+  "_meta": {
+   "title": "Add alpha"
+  }
+ },
+ "52": {
+  "inputs": {
+   "filename_prefix": "sprite/rgba",
+   "images": [
+    "54",
+    0
+   ]
+  },
+  "class_type": "SaveImage",
+  "_meta": {
+   "title": "Save RGBA sprite"
+  }
+ },
+ "60": {
+  "inputs": {
+   "width": 768,
+   "height": 1024,
+   "batch_size": 1
+  },
+  "class_type": "EmptyFlux2LatentImage",
+  "_meta": {
+   "title": "Canvas (text to image)"
+  }
+ },
+ "61": {
+  "inputs": {
+   "steps": 4,
+   "width": 768,
+   "height": 1024
+  },
+  "class_type": "Flux2Scheduler",
+  "_meta": {
+   "title": "Sigmas (text to image)"
+  }
+ },
+ "62": {
+  "inputs": {
+   "cfg": 1.0,
+   "model": [
+    "1",
+    0
+   ],
+   "positive": [
+    "5",
+    0
+   ],
+   "negative": [
+    "6",
+    0
+   ]
+  },
+  "class_type": "CFGGuider",
+  "_meta": {
+   "title": "Guider (text to image)"
+  }
+ },
+ "63": {
+  "inputs": {
+   "noise": [
+    "43",
+    0
+   ],
+   "guider": [
+    "62",
+    0
+   ],
+   "sampler": [
+    "42",
+    0
+   ],
+   "sigmas": [
+    "61",
+    0
+   ],
+   "latent_image": [
+    "60",
+    0
+   ]
+  },
+  "class_type": "SamplerCustomAdvanced",
+  "_meta": {
+   "title": "Sample (text to image)"
+  }
+ },
+ "64": {
+  "inputs": {
+   "samples": [
+    "63",
+    0
+   ],
+   "vae": [
+    "3",
+    0
+   ]
+  },
+  "class_type": "VAEDecode",
+  "_meta": {
+   "title": "Decode (text to image)"
+  }
+ },
+ "65": {
+  "inputs": {
+   "filename_prefix": "sprite/raw",
+   "images": [
+    "64",
+    0
+   ]
+  },
+  "class_type": "SaveImage",
+  "_meta": {
+   "title": "Save painted result (text to image)"
+  }
+ },
+ "66": {
+  "inputs": {
+   "bg_removal_model": [
+    "50",
+    0
+   ],
+   "image": [
+    "64",
+    0
+   ]
+  },
+  "class_type": "RemoveBackground",
+  "_meta": {
+   "title": "Cut out the sprite (text to image)"
+  }
+ },
+ "68": {
+  "inputs": {
+   "mask": [
+    "66",
+    0
+   ]
+  },
+  "class_type": "InvertMask",
+  "_meta": {
+   "title": "Invert (text to image)"
+  }
+ },
+ "69": {
+  "inputs": {
+   "image": [
+    "64",
+    0
+   ],
+   "alpha": [
+    "68",
+    0
+   ]
+  },
+  "class_type": "JoinImageWithAlpha",
+  "_meta": {
+   "title": "Add alpha (text to image)"
+  }
+ },
+ "67": {
+  "inputs": {
+   "filename_prefix": "sprite/rgba",
+   "images": [
+    "69",
+    0
+   ]
+  },
+  "class_type": "SaveImage",
+  "_meta": {
+   "title": "Save RGBA sprite (text to image)"
+  }
+ }
+}

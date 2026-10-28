@@ -1,0 +1,9 @@
+.venv/
+mia/
+kimodo/
+output/*
+!output/.gitkeep
+assets/*
+!assets/.gitkeep
+__pycache__/
+*.pyc

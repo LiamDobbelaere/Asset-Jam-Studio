@@ -1,0 +1,10 @@
+# generated clips, keyframes and finished videos
+output/
+__pycache__/
+*.pyc
+
+# your own logos and shot lists stay local; only the example is published
+assets/*
+!assets/.gitkeep
+shots/*
+!shots/example_intro.json

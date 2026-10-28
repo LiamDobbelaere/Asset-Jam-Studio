@@ -1,0 +1,77 @@
+diff --git a/comfy/ldm/trellis2/model.py b/comfy/ldm/trellis2/model.py
+index 22eaf14..ab6cef0 100644
+--- a/comfy/ldm/trellis2/model.py
++++ b/comfy/ldm/trellis2/model.py
+@@ -340,24 +340,39 @@ class ModulatedSparseTransformerCrossBlock(nn.Module):
+             shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.adaLN_modulation(mod).chunk(6, dim=1)
+         # Fuse the (mul + add) and (mul + residual) pairs into addcmul
+         b_map = x.batch_boardcast_map
++        # fp16 (Turing and older): the residual stream exceeds 65504 in late blocks, so keep it and
++        # the norms in fp32 and only run attention / MLP in fp16. x.feats arrives as fp32 from the caller.
++        fp16_resid = x.feats.dtype == torch.float32 and mod.dtype == torch.float16
++        cd = mod.dtype
+ 
+         h_feats = self.norm1(x.feats)
++        if fp16_resid:
++            h_feats = h_feats.to(cd)
+         h_feats = torch.addcmul(shift_msa[b_map], h_feats, (1 + scale_msa)[b_map])
+         h = self.self_attn(x.replace(h_feats), transformer_options=transformer_options)
+-        x = x.replace(torch.addcmul(x.feats, h.feats, gate_msa[b_map]))
++        if fp16_resid:
++            x = x.replace(torch.addcmul(x.feats, h.feats.float(), gate_msa[b_map].float()))
++        else:
++            x = x.replace(torch.addcmul(x.feats, h.feats, gate_msa[b_map]))
+ 
+-        h = x.replace(self.norm2(x.feats))
++        h_feats = self.norm2(x.feats)
++        h = x.replace(h_feats.to(cd) if fp16_resid else h_feats)
+         if self.image_attn_mode == "global":
+             global_ctx, _ = _split_proj_context(context)
+             h = self.cross_attn(h, global_ctx, transformer_options=transformer_options)
+         else:
+             h = self.cross_attn(h, context, transformer_options=transformer_options)
+-        x = x + h
++        x = x.replace(x.feats + h.feats.float()) if fp16_resid else x + h
+ 
+         h_feats = self.norm3(x.feats)
++        if fp16_resid:
++            h_feats = h_feats.to(cd)
+         h_feats = torch.addcmul(shift_mlp[b_map], h_feats, (1 + scale_mlp)[b_map])
+         h = self.mlp(x.replace(h_feats))
+-        x = x.replace(torch.addcmul(x.feats, h.feats, gate_mlp[b_map]))
++        if fp16_resid:
++            x = x.replace(torch.addcmul(x.feats, h.feats.float(), gate_mlp[b_map].float()))
++        else:
++            x = x.replace(torch.addcmul(x.feats, h.feats, gate_mlp[b_map]))
+         return x
+ 
+     def forward(self, x: SparseTensor, mod: torch.Tensor, context, transformer_options=None) -> SparseTensor:
+@@ -449,10 +464,15 @@ class SLatFlowModel(nn.Module):
+         if self.share_mod:
+             t_emb = self.adaLN_modulation(t_emb)
+ 
++        fp16_resid = h.feats.dtype == torch.float16
++        if fp16_resid:
++            h = h.replace(h.feats.float())
+         for block in self.blocks:
+             h = block(h, t_emb, cond, transformer_options=transformer_options)
+ 
+         h = h.replace(F.layer_norm(h.feats, h.feats.shape[-1:]))
++        if fp16_resid:
++            h = h.replace(h.feats.to(torch.float16))
+         h = self.out_layer(h)
+         return h
+ 
+diff --git a/comfy/supported_models.py b/comfy/supported_models.py
+index 3d2015b..c51d2e3 100644
+--- a/comfy/supported_models.py
++++ b/comfy/supported_models.py
+@@ -1539,7 +1539,7 @@ class Trellis2(supported_models_base.BASE):
+     vae_key_prefix = ["vae."]
+     clip_vision_prefix = "conditioner.main_image_encoder.model."
+     # this is only needed for the texture model
+-    supported_inference_dtypes = [torch.bfloat16, torch.float32]
++    supported_inference_dtypes = [torch.bfloat16, torch.float16, torch.float32]  # local: Turing has no bf16, fp32 is ~8x slower
+ 
+     def get_model(self, state_dict, prefix="", device=None):
+         return model_base.Trellis2(self, device=device)

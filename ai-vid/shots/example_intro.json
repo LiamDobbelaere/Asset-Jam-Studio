@@ -1,0 +1,42 @@
+{
+ "name": "example_intro",
+ "width": 832,
+ "height": 480,
+ "fps": 24,
+ "transition": 0,
+ "audio": null,
+ "shots": [
+  {
+   "id": "drop",
+   "prompt": "A single black ink droplet falls from above into a still pool of pale water, it hits the surface and splashes, concentric ripple rings spread outward across the water, flat 2D cartoon style with thick black ink outlines, high contrast, white and light blue, smooth slow motion, static camera, no text",
+   "seconds": 3,
+   "start": {
+    "generate": "A still pool of pale light-blue water filling the frame, seen from slightly above, one black ink droplet hanging in the air above the centre about to fall, flat 2D cartoon style with thick black ink outlines, clean white and light blue, minimal, no text",
+    "model": "base",
+    "seed": 11
+   },
+   "end": null
+  },
+  {
+   "id": "reflection",
+   "prompt": "The ripple rings on the water slowly settle and the reflection of the emblem appears on the water surface, the rings distort and then clear the reflection, flat 2D cartoon with thick black ink outlines, high contrast, static camera, no text",
+   "seconds": 3,
+   "start": "previous",
+   "end": {
+    "generate": "The emblem from image 1, without its lettering, seen as a reflection on the surface of pale light-blue water with faint concentric ripple rings distorting the reflection, flat 2D cartoon style with thick black ink outlines, white and light blue, no text",
+    "refs": ["assets/logo.png"],
+    "model": "base",
+    "seed": 12
+   }
+  },
+  {
+   "id": "reveal",
+   "type": "logo",
+   "logo": "assets/logo.png",
+   "seconds": 3,
+   "split": 0.69,
+   "background": "#ffffff",
+   "from": "previous"
+  }
+ ]
+}

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Asset Jam Studio</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%236d5dfc'/%3E%3Cpath d='M9 22V10l7 4 7-4v12l-7 4z' fill='none' stroke='white' stroke-width='2.2' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/style.css">
+<script>
+// apply the saved accent colour before the first paint (app.js owns the picker)
+try { var a = localStorage.getItem('accent'); if (a && /^#[0-9a-f]{6}$/i.test(a)) document.documentElement.style.setProperty('--accent', a); } catch (e) {}
+</script>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+  <symbol id="i-overview" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+  <symbol id="i-model3d" viewBox="0 0 24 24"><path d="M12 2.5 20.5 7v10L12 21.5 3.5 17V7z"/><path d="M3.5 7 12 11.5 20.5 7M12 11.5v10"/></symbol>
+  <symbol id="i-texture" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></symbol>
+  <symbol id="i-sprite" viewBox="0 0 24 24"><circle cx="12" cy="6.5" r="3.5"/><path d="M5 21v-3a5 5 0 0 1 5-5h4a5 5 0 0 1 5 5v3"/></symbol>
+  <symbol id="i-voice" viewBox="0 0 24 24"><rect x="9" y="2.5" width="6" height="12" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7"/></symbol>
+  <symbol id="i-music" viewBox="0 0 24 24"><path d="M9 18.5V5.5l11-2.5v13"/><circle cx="6" cy="18.5" r="3"/><circle cx="17" cy="16" r="3"/></symbol>
+  <symbol id="i-video" viewBox="0 0 24 24"><rect x="2.5" y="4" width="19" height="16" rx="2"/><path d="M2.5 9h19M2.5 15h19M7 4v16M17 4v16"/></symbol>
+  <symbol id="i-anim" viewBox="0 0 24 24"><circle cx="15" cy="4.5" r="2"/><path d="M4 21l4.5-6.5 3-1.5 2-5.5-3.5.5L7 11M11.5 13.5l3 3 1.5 4.5M13.5 7.5l3.5 2 3-1"/></symbol>
+  <symbol id="i-palette" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18c1.4 0 2-.8 2-1.7 0-1-.8-1.3-.8-2.3 0-1 .8-1.5 2-1.5H17a4 4 0 0 0 4-4c0-4.8-4-8.5-9-8.5z"/><circle cx="7.5" cy="12" r="1.2"/><circle cx="10" cy="7.5" r="1.2"/><circle cx="15" cy="7.5" r="1.2"/></symbol>
+</svg>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="logo"></span><span>Asset Jam Studio</span></div>
+  <nav class="tabs" id="nav">
+    <button data-page="overview" title="Overview: queue, system state"><svg><use href="#i-overview"/></svg><span class="lbl">Overview</span></button>
+    <button data-page="model3d" title="3D Models: text → GLB / FBX"><svg><use href="#i-model3d"/></svg><span class="lbl">3D Models</span></button>
+    <button data-page="texture" title="Textures: seamless world textures"><svg><use href="#i-texture"/></svg><span class="lbl">Textures</span></button>
+    <button data-page="sprite" title="Sprites: 2D character sprites"><svg><use href="#i-sprite"/></svg><span class="lbl">Sprites</span></button>
+    <button data-page="voice" title="Voice: dialogue lines"><svg><use href="#i-voice"/></svg><span class="lbl">Voice</span></button>
+    <button data-page="music" title="Music: tracks and loops"><svg><use href="#i-music"/></svg><span class="lbl">Music</span></button>
+    <button data-page="video" title="Video (beta): shot list → mp4"><svg><use href="#i-video"/></svg><span class="lbl">Video</span><span class="beta">beta</span></button>
+    <button data-page="anim" title="Animate: rig + animation clips"><svg><use href="#i-anim"/></svg><span class="lbl">Animate</span></button>
+  </nav>
+  <div class="status" id="status"></div>
+  <button class="iconbtn" id="accent-btn" title="Accent colour"><svg><use href="#i-palette"/></svg></button>
+</header>
+
+<main id="main">
+  <section class="page" data-page="overview" id="page-overview"></section>
+  <section class="page" data-page="model3d" id="page-model3d"></section>
+  <section class="page" data-page="texture" id="page-texture"></section>
+  <section class="page" data-page="sprite" id="page-sprite"></section>
+  <section class="page" data-page="voice" id="page-voice"></section>
+  <section class="page" data-page="music" id="page-music"></section>
+  <section class="page" data-page="video" id="page-video"></section>
+  <section class="page" data-page="anim" id="page-anim"></section>
+</main>
+
+<div id="modal" class="modal hidden"><div class="modal-box" id="modal-box"></div></div>
+<div id="toasts" class="toasts"></div>
+
+<script type="module" src="/app.js"></script>
+</body>
+</html>

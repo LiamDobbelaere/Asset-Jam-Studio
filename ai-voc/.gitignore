@@ -1,0 +1,19 @@
+# environment and weights: recreated by setup.ps1
+.venv/
+models/
+
+# generated speech and fine-tuned checkpoints (folder kept, contents ignored)
+output/*
+!output/.gitkeep
+
+# per-voice derived data (24 kHz clips, codec tokens); ref.wav/ref.txt/clips.jsonl are kept
+voices/*/clips/
+voices/*/codes.jsonl
+
+__pycache__/
+*.pyc
+*.log
+
+# private voices stay local; only the example voice is published
+voices/*
+!voices/liam/

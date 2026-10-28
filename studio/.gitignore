@@ -1,0 +1,8 @@
+# job records and uploaded input pictures
+jobs/
+uploads/
+thumbs/
+intermediates/
+__pycache__/
+*.pyc
+comfy.log

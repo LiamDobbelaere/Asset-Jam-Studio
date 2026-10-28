@@ -1,0 +1,1 @@
+It's been a very interesting project actually because I've noticed that we can make a lot of things that exist online in subscription form and we can just run that locally.

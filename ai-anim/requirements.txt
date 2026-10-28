@@ -1,0 +1,23 @@
+# runtime deps for Make-It-Animatable (rigging) and Kimodo (text-to-motion); torch is installed by setup.ps1
+einops
+timm
+trimesh
+shapely
+rtree
+scipy
+numpy
+tqdm
+pillow
+# Kimodo
+hydra-core
+omegaconf
+transformers==5.1.0
+peft
+accelerate
+packaging
+pydantic
+filelock
+av
+bvhio
+huggingface_hub
+gradio_client
