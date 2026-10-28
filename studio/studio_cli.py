@@ -131,6 +131,11 @@ def coerce_flag(spec, v):
 
 
 def main(argv=None):
+    # JSON goes out with ensure_ascii=False and titles can hold any character (a music key like "B♭ minor"); on
+    # Windows a piped stdout defaults to cp1252 and would crash on them, so always write UTF-8
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
     argv = list(sys.argv[1:] if argv is None else argv)
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
