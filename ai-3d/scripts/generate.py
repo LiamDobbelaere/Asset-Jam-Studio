@@ -121,7 +121,7 @@ def asset_name(prompt, fallback="Prop"):
 
 def build_api(prompt, preset="gameasset", raw=False, seed=None, model="pixal3d", resolution=None, texture=None,
               tris=None, shape="hard", image_only=False, reference_image=None, edges="sharp", normalmap=True,
-              remesh=None, save_highpoly=False, normal_from="remesh", blur=None, ao=None):
+              remesh=None, save_highpoly=False, normal_from="remesh", blur=None, ao=None, texture_from="picture"):
     """Patch the preset's API workflow. Returns (api, info).
 
     reference_image: name of a picture already uploaded to ComfyUI's input folder; the text-to-image stage is
@@ -132,6 +132,8 @@ def build_api(prompt, preset="gameasset", raw=False, seed=None, model="pixal3d",
     high-poly the normal map is baked from, "remesh" (the remeshed shell) or "raw" (the shape VAE's own mesh,
     before the remesh: keeps the finest detail but also its voxel staircase). blur: radius in px of the blur on
     the diffuse (0 = none); ao: how much the baked AO darkens the diffuse (0..1). Both default per shape, see DIFFUSE.
+    texture_from: "picture" (default) projects the reference picture onto the faces the Pixal3D camera saw and keeps
+    the voxel bake for the rest; "voxels" is the voxel bake everywhere. TRELLIS.2 always uses the voxels.
     """
     p = PRESETS[preset]
     api = json.load(open(os.path.join(ROOT, "workflows", p["workflow"]), encoding="utf-8"))
@@ -179,6 +181,21 @@ def build_api(prompt, preset="gameasset", raw=False, seed=None, model="pixal3d",
                     if inp == [blur_id, 0]:
                         v["inputs"][k] = [blend_id, 0]
             del api[blur_id]
+        if texture_from == "picture" and model == "pixal3d":
+            # Pixal3D is pixel-aligned, so the reference picture projects exactly onto the faces the camera saw:
+            # crisp 1024 painting there instead of the soft voxel bake, which stays for the hidden side
+            # (custom_nodes/ai3d_project). The mask is cropped exactly like the picture.
+            crop, bake = find(api, "ImageCropToMask"), find(api, "BakeTextureFromVoxel")
+            api["9030"] = {"class_type": "MaskToImage", "_meta": {"title": "Mask as image"},
+                           "inputs": {"mask": api[crop]["inputs"]["masks"]}}
+            api["9031"] = {"class_type": "ImageCropToMask", "_meta": {"title": "Crop mask like the picture"},
+                           "inputs": {**api[crop]["inputs"], "images": ["9030", 0]}}
+            api["9032"] = {"class_type": "ProjectReferenceTexture", "_meta": {"title": "Project reference picture"},
+                           "inputs": {"mesh": api[bake]["inputs"]["mesh"], "image": [crop, 0], "mask": ["9031", 0],
+                                      "base_color": [bake, 0], "reference_mesh": api[bake]["inputs"]["reference_mesh"],
+                                      "fov": api[find(api, "Pixal3DConditioning")]["inputs"]["camera_angle_x"],
+                                      "facing_lo": 0.2, "facing_hi": 0.5, "depth_tolerance": 0.02, "match_colors": True}}
+            api[find(api, "ImageBlend")]["inputs"]["image1"] = ["9032", 0]
         remesh_id, unwrap_id = find(api, "RemeshMesh"), find(api, "UnwrapMesh")
         high_id = find(api, "GetMeshInfo") if normal_from == "raw" else remesh_id   # GetMeshInfo passes the VAE mesh through
         if normalmap:
@@ -206,7 +223,8 @@ def build_api(prompt, preset="gameasset", raw=False, seed=None, model="pixal3d",
     info = {"preset": preset, "seed": seed, "model": model, "resolution": resolution, "texture": texture, "text": text}
     if preset in ("gameasset", "character"):
         info.update(tris=tris, shape=shape, edges=edges, normalmap=bool(normalmap), normal_from=normal_from,
-                    remesh=remesh or REMESH[shape], blur=blur, ao=ao)
+                    remesh=remesh or REMESH[shape], blur=blur, ao=ao,
+                    texture_from=texture_from if model == "pixal3d" else "voxels")
     return api, info
 
 
@@ -258,6 +276,9 @@ def main():
                     help="gameasset: bake the normal map from the remeshed shell (default) or from the raw shape-VAE mesh")
     ap.add_argument("--blur", type=int, default=None, help="gameasset: blur radius on the diffuse in px (default 0, round 2)")
     ap.add_argument("--ao", type=float, default=None, help="gameasset: AO strength multiplied into the diffuse (default 0.3, round 0.45)")
+    ap.add_argument("--texture-from", choices=["picture", "voxels"], default="picture",
+                    help="gameasset: picture (default) projects the reference picture onto the faces the camera saw, crisp; "
+                         "voxels is the soft voxel bake everywhere (TRELLIS.2 always uses it)")
     ap.add_argument("--dissolve", type=float, default=None,
                     help="gameasset: after decimation merge coplanar triangles within this many degrees in Blender (default 10, "
                          "round 0; 0 = off), so flat panels give their triangles back; FBX and GLB are written with the reduced mesh")
@@ -273,7 +294,8 @@ def main():
 
     api, info = build_api(a.prompt, a.preset, a.raw, a.seed, a.model, a.resolution, a.texture, a.tris, a.shape,
                           a.image_only, edges=a.edges, normalmap=not a.no_normalmap, remesh=a.remesh,
-                          save_highpoly=a.save_highpoly, normal_from=a.normal_from, blur=a.blur, ao=a.ao)
+                          save_highpoly=a.save_highpoly, normal_from=a.normal_from, blur=a.blur, ao=a.ao,
+                          texture_from=a.texture_from)
     if a.dump:
         json.dump(api, open(a.dump, "w", encoding="utf-8"), indent=1)
         print("wrote", a.dump)

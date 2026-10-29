@@ -160,3 +160,26 @@ test, with the cabinet, the office chair and the printer bot as subjects (box, t
 - Bake at 2048² for props the camera gets close to (weapons), 1024² for the rest (`--texture 2048`, not tested).
 - The Z-Image reference picture decides the design; a `--stage image` review before building was worth it
   (23 of 23 usable), keep that in the game workflow.
+
+## Why the voxel preview looks tilted (measured 2026-10-29)
+
+Question: does the tilted sparse-structure preview point to a bug early in the pipeline? No. Pixal3D is
+pixel-aligned: `Pixal3DConditioning` puts the camera straight in front of the grid at eye level, and the model
+builds the object so it projects onto the picture through that camera. The game-asset prompt asks Z-Image for a
+three-quarter view from above, so the object comes out pitched by the camera elevation from the first stage on.
+`level_mesh.py` in `glb_to_fbx.py` undoes it (hole punch: roll -14°, box shrinks to 0.42 when levelled).
+
+Tried on the same hole-punch picture (`reference_00209_`):
+
+| Variant | Result |
+|---|---|
+| Pixal3D, camera at eye level (stock) | clean shape, follows the picture (red roller, handle opening), tilted ~14°; levelled fine |
+| Pixal3D, camera told the elevation (orbit camera at 15/30/45°, a small custom conditioning node) | voxels come out level, but the shape breaks: at 30° the full mesh is layered junk. The model only works with the eye-level camera it was trained with |
+| TRELLIS.2 (`--model trellis2`) | voxels and mesh perfectly level and axis-aligned (level fix 0°), but loses the roller and paints a made-up panel on top |
+
+So the tilt is a property of Pixal3D, not a bug, and post-levelling is the right fix. Side note: the voxel
+preview uses Hunyuan3D's `VoxelToMesh`, which reverses the grid axes (X and Z swapped), so it is also mirrored
+and turned 90° relative to the final mesh.
+
+Open: levelling before the remesh (so flat faces line up with the remesh grid) would need the rotation undone
+again before the voxel texture bake; no sign yet that the tilted remesh costs quality (QEF keeps tilted planes flat).

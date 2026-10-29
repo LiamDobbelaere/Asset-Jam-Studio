@@ -22,7 +22,7 @@ import intro as genintro   # ai-vid/scripts
 # progress bookkeeping shared by the ComfyUI flows
 
 WEIGHTS = {"KSampler": 6, "Trellis2ShapeStage": 10, "Trellis2UpsampleStage": 12, "Trellis2TextureStage": 10,
-           "BakeTextureFromVoxel": 6, "PaintMesh": 4, "BakeAmbientOcclusion": 4, "BakeNormalMapFromMesh": 3,
+           "BakeTextureFromVoxel": 6, "ProjectReferenceTexture": 2, "PaintMesh": 4, "BakeAmbientOcclusion": 4, "BakeNormalMapFromMesh": 3,
            "RemeshMesh": 3, "UnwrapMesh": 3, "DecimateMesh": 2, "RemoveBackground": 2, "MoGeInference": 2,
            "UNETLoader": 2, "CLIPLoader": 2, "RenderUVAtlas": 2, "VoxelToMesh": 2,
            "AIVidWan22FirstLastFrameToVideoLatent": 2, "Wan22ImageToVideoLatent": 2}
@@ -41,7 +41,7 @@ PHASE_BY_CLASS = {
     "RescaleCFG": "Shape", "CFGOverride": "Shape", "VoxelToMesh": "Shape", "GetMeshInfo": "Shape",
     "PrimitiveBoolean": "Shape", "PrimitiveInt": "Shape",
     "Trellis2TextureStage": "Texture", "VaeDecodeTextureTrellis": "Texture", "BakeTextureFromVoxel": "Texture",
-    "PaintMesh": "Texture", "ApplyTextureToMesh": "Texture",
+    "PaintMesh": "Texture", "ApplyTextureToMesh": "Texture", "ProjectReferenceTexture": "Texture", "MaskToImage": "Texture",
     "RemeshMesh": "Mesh clean-up", "DecimateMesh": "Mesh clean-up", "MeshSmoothNormals": "Mesh clean-up",
     "UnwrapMesh": "Mesh clean-up", "RenderUVAtlas": "Mesh clean-up", "BakeAmbientOcclusion": "Mesh clean-up",
     "BakeNormalMapFromMesh": "Mesh clean-up",
@@ -316,11 +316,12 @@ def flow_model3d(job):
         _int(p.get("resolution")), _int(p.get("texture")), _int(p.get("tris")), p.get("shape", "hard"),
         image_only=(stage == "image"), reference_image=reference, edges=p.get("edges") or "sharp",
         normalmap=p.get("normalmap", True) not in (False, "false", "0", 0), remesh=_int(p.get("remesh")),
-        normal_from=p.get("normal_from") or "remesh", blur=_int(p.get("blur")), ao=_float(p.get("ao")))
+        normal_from=p.get("normal_from") or "remesh", blur=_int(p.get("blur")), ao=_float(p.get("ao")),
+        texture_from=p.get("texture_from") or "picture")
     job.meta.update(info)
     job.add_log(f"seed {seed}, preset {info['preset']}, model {info['model']}, shape res {info['resolution']}, texture {info['texture']}"
                 + (f", {info['tris']} tris, {info['shape']} shape, {info['edges']} edges, remesh {info['remesh']}, "
-                   f"normal map {'on (from ' + info['normal_from'] + ')' if info['normalmap'] else 'off'}" if "tris" in info else ""))
+                   f"normal map {'on (from ' + info['normal_from'] + ')' if info['normalmap'] else 'off'}, texture from {info['texture_from']}" if "tris" in info else ""))
     convert = p.get("preset", "gameasset") in ("gameasset", "character") and p.get("fbx", True) and stage != "image"
     hist, runner = run_comfy(job, api, (0, 92 if convert else 100))
 

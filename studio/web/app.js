@@ -327,7 +327,7 @@ function result3d(job, lib) {
   const m = job?.meta || lib?.job?.meta || {};
   const p = job?.params || lib?.job?.params || {};
   box.append(h('div', { class: 'actions' }, dl(glb, 'GLB'), dl(o.fbx?.url || lib?.fbx, 'FBX'), dl(diffuse, 'Diffuse PNG'), reveal(o.glb?.path || o.fbx?.path)));
-  box.append(kv([['Prompt', copyable(p.prompt)], ['Preset', p.preset], ['3D model', p.model], ['Seed', p.seed ?? m.seed], ['Shape', p.shape && `${p.shape}${m.tris ? ', ' + m.tris + ' tris' : ''}`], ['Edges', m.edges && `${m.edges}, remesh ${m.remesh}, normal map ${m.normalmap ? 'on (' + (m.normal_from || 'remesh') + ')' : 'off'}${p.dissolve ? ', dissolve ' + p.dissolve + '°' : ''}`], ['Resolution', m.resolution && `shape ${m.resolution}, texture ${m.texture}`], ['Size', p.size && p.size + ' m'], ['FBX', m.fbx_error ? '✗ ' + m.fbx_error : (o.fbx ? '✓ ' + basename(o.fbx.path) : null)]]));
+  box.append(kv([['Prompt', copyable(p.prompt)], ['Preset', p.preset], ['3D model', p.model], ['Seed', p.seed ?? m.seed], ['Shape', p.shape && `${p.shape}${m.tris ? ', ' + m.tris + ' tris' : ''}`], ['Edges', m.edges && `${m.edges}, remesh ${m.remesh}, normal map ${m.normalmap ? 'on (' + (m.normal_from || 'remesh') + ')' : 'off'}${m.texture_from ? ', colours from ' + m.texture_from : ''}${p.dissolve ? ', dissolve ' + p.dissolve + '°' : ''}`], ['Resolution', m.resolution && `shape ${m.resolution}, texture ${m.texture}`], ['Size', p.size && p.size + ' m'], ['FBX', m.fbx_error ? '✗ ' + m.fbx_error : (o.fbx ? '✓ ' + basename(o.fbx.path) : null)]]));
   return box;
 }
 function resultTexture(job, lib) {
@@ -534,6 +534,7 @@ function build3dForm() {
     uploadBox('model3d', 'reference', 'Own reference image (optional)', { hint: 'Skips text-to-image: Pixal3D works straight from your picture' }),
     h('details', {}, h('summary', {}, 'Advanced'), h('div', { class: 'two' }, field('Shape resolution', num('resolution', '', { placeholder: 'preset', step: 256 })), field('Texture size', num('texture', '', { placeholder: 'preset', step: 512 }))),
       field('Remesh resolution', num('remesh', '', { placeholder: '512 (round 384)', step: 64, min: 64, max: 1024 }), 'Voxel grid of the remesh before decimation. 512 keeps taps, ribs and collars separate where 256 melts them; set 256 for perforated parts like a mesh chair back, where 512 resolves the holes and the decimator stalls on them.'),
+      field('Diffuse colours from', select('texture_from', [['picture', 'Reference picture (crisp, Pixal3D)'], ['voxels', 'Voxel bake (soft)']], 'picture'), 'Pixal3D builds the object exactly where it is in the reference picture, so the picture is projected onto the faces the camera saw; the voxel bake fills the hidden side, colour-matched to the picture.'),
       h('div', { class: 'two' }, field('Diffuse blur (px)', num('blur', '', { placeholder: '0 (round 2)', step: 1, min: 0, max: 8 })), field('AO in diffuse', num('ao', '', { placeholder: '0.3 (round 0.45)', step: 0.05, min: 0, max: 1 }))),
       check('normalmap', 'Bake a normal map from the high-poly (bevels and panel lines shade as if modelled; also written as <name>Normal.png for Unity)', true),
       h('div', { class: 'two' },

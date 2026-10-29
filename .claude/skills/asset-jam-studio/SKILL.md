@@ -95,7 +95,7 @@ grids aligned; `--tile crossfade` for flat walls. `--lora 0.8` only for grass, f
 **model3d** (props and characters). ONE object, not a scene: `--prompt "a wooden barrel with iron bands"`.
 `--preset gameasset` (default: remesh 512, 3000 tris decimated then planar-dissolved to ~1200-2400, FBX + diffuse + normal map for Unity/three.js; add `--remesh 256` for props with perforated parts such as a mesh chair back or a grille, where 512 makes the decimator stall), `--preset character` (a person
 or creature in a T-pose, 4000 tris, ready for `anim`), `--preset detailed` (hero model, 700k tris, GLB only,
-25 min). `--shape round` for bottles, pots, balls. `--size 1.2` = longest side in metres. Workflow for anything
+25 min). The game-asset diffuse is the reference picture itself projected onto the faces the camera saw (`--texture_from picture`, default; `voxels` = the old soft bake), so logos, labels and colours come out exactly as in the picture: judge the picture strictly. `--shape round` for bottles, pots, balls. `--size 1.2` = longest side in metres. Workflow for anything
 that matters: `--stage image` first (20 s, returns `outputs.reference`), look at the picture (Read the PNG),
 then resubmit the same parameters with `--stage model --seed <seed from the first job>` (ComfyUI reuses the
 cached picture). `--stage full` for one-shot props.

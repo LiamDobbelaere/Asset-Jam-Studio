@@ -34,6 +34,7 @@ the download. With `CIVITAI_TOKEN` set in the environment it also fetches the op
 setup.ps1                     one-time install (ComfyUI, venv, patch, workflows, models)
 patches/                      local ComfyUI patches applied by setup.ps1
 custom_nodes/ai3d_seamless/   our ComfyUI nodes: seamless tiling for Z-Image (installed by setup.ps1)
+custom_nodes/ai3d_project/    our ComfyUI node: projects the reference picture onto Pixal3D meshes (installed by setup.ps1)
 start_comfyui.bat             start the server (http://127.0.0.1:8188)
 generate.bat "prompt" [...]   command-line text → GLB
 texture.bat "prompt" [...]    command-line text → seamless world texture PNG (walls, floors, ground)
@@ -66,7 +67,7 @@ ComfyUI/output/sprite/        generated sprites (raw = painted on white, rgba = 
 
 | Preset | Target | Geometry | Textures | Output |
 |---|---|---|---|---|
-| `gameasset` (default) | stylised low-poly game props (~1–3k triangles) | shape res 1024, remesh 512 with QEF vertices (256 for perforated parts), decimated to `--tris` (default 3000, round 1500) with feature edges pinned (`--edges sharp`), hard edges > 60°, then Blender planar-dissolves coplanar triangles within `--dissolve` 10° so flat panels give their triangles back (a box lands near 1200, a chair near 2100) | one 1024² diffuse = baked base color × AO 0.3 (round: × 0.45 with a 2 px blur), plus a 1024² normal map baked from the remeshed high-poly | GLB (diffuse + normal), plus `assets/<Name>.fbx` + `<Name>Diffuse.png` + `<Name>Normal.png` via Blender |
+| `gameasset` (default) | stylised low-poly game props (~1–3k triangles) | shape res 1024, remesh 512 with QEF vertices (256 for perforated parts), decimated to `--tris` (default 3000, round 1500) with feature edges pinned (`--edges sharp`), hard edges > 60°, then Blender planar-dissolves coplanar triangles within `--dissolve` 10° so flat panels give their triangles back (a box lands near 1200, a chair near 2100) | one 1024² diffuse = the reference picture projected onto the faces the camera saw, the voxel-baked base color elsewhere (`--texture-from`), × AO 0.3 (round: × 0.45 with a 2 px blur), plus a 1024² normal map baked from the remeshed high-poly | GLB (diffuse + normal), plus `assets/<Name>.fbx` + `<Name>Diffuse.png` + `<Name>Normal.png` via Blender |
 | `character` | a person or creature for `ai-anim/` | as `gameasset`, 4000-tri budget + dissolve; the prompt asks for a front-view T-pose | one 1024² diffuse + normal map | GLB + FBX + PNGs |
 | `detailed` | hero / showcase models | shape res 1536, 700k tris | 4096² base color, metallic-roughness, normal, AO | GLB with full PBR |
 
@@ -93,7 +94,8 @@ Options: `--preset gameasset|character|detailed`, `--shape hard|round` (round: f
 remesh, a 1500-tri default and no dissolve, for bottles, pots, balls), `--edges sharp|soft` (see below),
 `--tris N` (decimation budget, default 3000 / round 1500 / character 4000), `--dissolve DEG` (planar dissolve
 after decimation, default 10 / round 0, see below), `--no-normalmap`, `--normal-from remesh|raw` (which high-poly
-the normal map is baked from), `--blur PX` / `--ao F` (diffuse blur and AO strength, default 0 / 0.3, round 2 / 0.45),
+the normal map is baked from), `--texture-from picture|voxels` (diffuse from the projected reference picture, default, or the voxel bake everywhere,
+see below), `--blur PX` / `--ao F` (diffuse blur and AO strength, default 0 / 0.3, round 2 / 0.45),
 `--remesh N` (remesh voxel resolution, default 512 / round 384; 256 for perforated parts), `--save-highpoly` (also writes the remeshed
 high-poly as `output/3d/highpoly_*.glb`), `--seed N`, `--model pixal3d|trellis2`, `--name`, `--size` (metres),
 `--out` (folder for FBX/PNG, default `assets/`), `--no-fbx`, `--resolution` / `--texture` (override the preset),
@@ -143,6 +145,22 @@ the 256 remesh into three distinct taps and crisp ribs at the same budget, the s
 holes and the decimator stalls on them. Not worth it, measured: `--resolution 1536` (same
 low-poly, and a cabinet ran 120 s per upsample step), `--normal-from raw` (adds voxel grain on flat areas). Artist-topology models (MeshAnything, MeshFlow, BPT, QuadGPT) are out on licence
 or have no weights; LATO.2 (MIT code, ~8 GB VRAM) is the one left to try.
+
+### Why textures came out soft, and the fix (`--texture-from picture`)
+
+The diffuse used to come only from the texture stage's voxels: TRELLIS.2's texture VAE predicts colours on a
+1024 voxel grid and `BakeTextureFromVoxel` samples them, so labels, logos and outlines arrive blurred and dark
+(a charcoal hole punch baked near-black). But Pixal3D is pixel-aligned: it builds the object in the frame of a
+fixed eye-level camera (that is also why its voxel preview looks tilted: the three-quarter picture is shot from
+above), so every surface point lands exactly on its pixel in the cropped reference picture.
+`custom_nodes/ai3d_project` (`ProjectReferenceTexture`) uses that: it rasterizes the UV atlas, snaps each texel onto
+the dense surface, projects it through the Pixal3D camera and takes the picture's colour where the surface is
+visible (depth test against the low-poly) and faces the camera (full above cos 0.5, fading out to the bake at 0.2).
+The hidden side keeps the voxel bake, shifted per colour towards what the picture shows for the same baked colour
+(a smooth Gaussian-weighted average over visible texels with a similar baked colour), so a near-black bake becomes the picture's charcoal while
+a white lid stays white. On a coffee cup with a frog logo and a cooler with a big "G" the logo, its outline and the
+handles come out as crisp as the picture; the seam to the baked side does not show. TRELLIS.2 is not
+pixel-aligned, so `--model trellis2` always uses the voxels. `--texture-from voxels` is the old bake.
 
 Prompt tips: describe one object, not a scene. Each preset appends its own style hints (the
 game-asset preset asks for a smooth, rounded low-poly prop with clean hand-painted colours on a plain background)

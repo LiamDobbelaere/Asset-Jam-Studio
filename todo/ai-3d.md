@@ -78,7 +78,7 @@ Useful as a quality ceiling to compare against, not as the pipeline.
 
 ## Also worth checking when revisiting
 
-- Same-seed A/B of `--model pixal3d` vs `--model trellis2` on 3 props (never done; TRELLIS.2 skips the MoGe camera stage).
+- Same-seed A/B of `--model pixal3d` vs `--model trellis2`: done on one prop (2026-10-29, see ai-3d-improvements.md): TRELLIS.2 is upright by construction but follows the picture less well.
 - Whether a newer ComfyUI has native retopo / quad nodes (the mesh node set grew fast in 2026).
 - Texture side: outputs lack the hand-drawn ink outlines of the house style; a Z-Image LoRA on our
   own diffuse textures, or an edge-detect pass baked into the diffuse, could get closer.

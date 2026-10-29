@@ -89,6 +89,10 @@ KINDS = {
             "normal_from": P("str", "Which high-poly the normal map is baked from: remesh (the remeshed shell, smooth) or raw (the "
                                     "shape VAE's own mesh: finest detail, but its voxel staircase shows as faint stripes on flat areas)",
                              default="remesh", choices=["remesh", "raw"]),
+            "texture_from": P("str", "Where the diffuse colours come from: picture (Pixal3D only) projects the reference picture "
+                                     "onto the faces the camera saw, as crisp as the picture, and keeps the voxel bake for the "
+                                     "hidden side; voxels is the soft voxel bake everywhere (TRELLIS.2 always uses it)",
+                              default="picture", choices=["picture", "voxels"]),
             "dissolve": P("float", "After decimation, merge coplanar triangles within this many degrees in Blender (inside UV islands, "
                                    "textures stay valid) and re-triangulate; 0 = off. Lets flat panels give their triangles back so the "
                                    "budget goes to small parts (needs fbx). Default 10 (hard), 0 (round)", min=0.0, max=30.0),
