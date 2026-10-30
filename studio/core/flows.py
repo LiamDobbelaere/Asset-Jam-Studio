@@ -860,7 +860,59 @@ def flow_anim(job):
     job.set_progress(100, "Done", "", force=True)
 
 
-FLOWS = {"model3d": flow_model3d, "texture": flow_texture, "sprite": flow_sprite, "voice": flow_voice, "voice_prep": flow_voice_prep,
+# ---------------------------------------------------------------------------------------------
+# painting a modelled prop (ai-3d/scripts/paint.py: StableGen in Blender, through ComfyUI)
+
+def flow_paint(job):
+    import paint as genpaint   # ai-3d/scripts
+    p = job.params
+    glb = p.get("model_upload") or url_to_path(p.get("model_url"))
+    picture = p.get("picture_upload") or url_to_path(p.get("picture_url"))
+    if not glb or not os.path.isfile(glb):
+        raise ValueError("pick the modelled GLB to paint: from the 3D library or a file")
+    if not picture or not os.path.isfile(picture):
+        raise ValueError("pick the reference picture the prop was modelled from")
+    seed = _int(p.get("seed"))
+    if seed is None:
+        seed = random.randint(0, 2**31)
+        p["seed"] = seed
+    name = unique_name(ASSETS, p.get("name") or os.path.splitext(os.path.basename(glb))[0], [".glb", ".fbx"])
+    job.meta["name"] = name
+    lock = [s.strip() for s in (p.get("lock") or "").split(",") if s.strip()]
+    prompt = " | ".join(s.strip() for s in (p.get("prompt") or "", p.get("front") or "", p.get("plain") or ""))
+    ensure_comfy(job)
+    for w in (tts, music, sfx, anim):   # StableGen's views run in ComfyUI: the GPU belongs to it
+        w.unload()
+    job.outputs["reference"] = {"path": picture, "url": file_url(picture)}
+
+    def run_api(api):
+        hist, runner = run_comfy(job, api, (2, 6))
+        return [path for nid, path in history_files(hist, kinds=("images",))]
+
+    def on_file(label, path):
+        url = file_url(path)
+        # the mask also comes through the ComfyUI runner
+        if url and not any(os.path.abspath(i.get("path") or "") == os.path.abspath(path) for i in job.intermediates):
+            job.add_intermediate(label, "image", path, url)
+
+    out = genpaint.paint(glb, picture, prompt, name, ASSETS, lock, bool(p.get("low")), seed, _float(p.get("ipadapter"), 0.8),
+                         _float(p.get("discard"), 65.0), _int(p.get("resolution"), 1024), _float(p.get("size")),
+                         p.get("fbx", True) is not False, upload=upload_to_comfy, run_api=run_api, log=job.add_log,
+                         on_progress=lambda pct, phase, detail="": job.set_progress(pct, phase, detail, force=True),
+                         on_file=on_file, should_cancel=lambda: job.cancel_requested)
+    job.meta.update(fit={k: round(out["fit"][k], 3) for k in ("iou", "yaw", "elev", "fov")}, tris=out["bake"]["tris"],
+                    unseen_texels=out["bake"]["unseen_texels"], locked=out["bake"]["locked"], workdir=out["workdir"])
+    job.outputs["views"] = [{"path": v, "url": file_url(v)} for v in out["views"]]
+    job.outputs["diffuse"] = {"path": out["diffuse"], "url": file_url(out["diffuse"])}
+    if out.get("fbx"):
+        job.outputs["fbx"] = {"path": out["fbx"], "url": file_url(out["fbx"])}
+        job.meta["fbx_stats"] = out.get("fbx_stats")
+    job.outputs["glb"] = {"path": out["glb"], "url": file_url(out["glb"])}
+    job.add_log(f"GLB: {out['glb']}")
+    job.set_progress(100, "Done", "")
+
+
+FLOWS = {"model3d": flow_model3d, "paint": flow_paint, "texture": flow_texture, "sprite": flow_sprite, "voice": flow_voice, "voice_prep": flow_voice_prep,
          "music": flow_music, "sfx": flow_sfx, "video": flow_video, "anim": flow_anim}
 
 

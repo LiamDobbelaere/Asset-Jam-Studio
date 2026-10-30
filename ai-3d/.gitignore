@@ -16,3 +16,6 @@ __pycache__/
 .idea/
 Thumbs.db
 .DS_Store
+
+# StableGen Blender profile + downloads: recreated by setup_paint.ps1
+blender/

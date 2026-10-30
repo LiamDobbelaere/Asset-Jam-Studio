@@ -280,6 +280,39 @@ KINDS = {
             "audio_url": P("str", "", ui=True),
         },
     },
+    "paint": {
+        "label": "Painted prop", "page": "model3d", "backend": "comfy",
+        "summary": "Paint a modelled prop (a GLB written with ai-3d/scripts/prop_kit.py) from the reference picture it was modelled "
+                   "from: StableGen projects SDXL views (depth ControlNet + IP-Adapter of the picture) onto the mesh in a Blender "
+                   "window, then one diffuse is baked on a fresh UV unwrap: GLB + Unity FBX + <Name>Diffuse.png in the 3D library.",
+        "time": "~2-3 min (7 views; 9 with low views)",
+        "outputs": {"glb": "the painted model (ai-3d/assets/<Name>.glb)", "fbx": "Unity FBX", "diffuse": "<Name>Diffuse.png",
+                    "reference": "the picture it was painted from", "views": "the painted camera views (images)"},
+        "params": {
+            "model_url": P("str", "The modelled GLB as a /files/... URL (from GET /api/library/models: the 'glb' field)"),
+            "model_upload": P("path", "Or a GLB path on this machine (e.g. the prop_kit.py export)"),
+            "picture_url": P("str", "The reference picture as a /files/... URL (a 3D model's 'reference')"),
+            "picture_upload": P("path", "Or a PNG path on this machine"),
+            "prompt": P("str", "What the whole prop is and its materials: 'stylized 3D game prop, soft hand-painted texture, "
+                               "clean, pastel, wooden office desk with a pedestal'", required=True),
+            "front": P("str", "Details only the front (the picture's side) has: 'drawers with metal handles', 'a frog face "
+                              "printed on the sleeve'. Kept out of the other views so they are not repeated all round"),
+            "plain": P("str", "How every other view should look, for the WHOLE prop: 'plain flat wooden back panel, no drawers'. "
+                              "Describe all parts: a top view told only 'plain cardboard sleeve' paints the lid as cardboard"),
+            "lock": P("str", "Comma-separated material names of plain parts (Snow,Floor / Wood / Lid,White): they keep the "
+                             "painted shading but one colour, so bleed from a neighbour (orange on snow, glow on a post) is removed"),
+            "low": P("bool", "Two extra views from below for props with undersides worth painting (chair stretchers, table "
+                             "frames). Leave off otherwise: on a cup they invented a second logo", default=False),
+            "name": P("str", "Asset name (default: the GLB's file name). A suffix _2, _3 ... is added when the name is taken."),
+            "seed": SEED,
+            "ipadapter": P("float", "IP-Adapter strength: how much the picture steers every view", default=0.8, min=0, max=1.5),
+            "discard": P("float", "A view paints only faces turned less than this many degrees away from it", default=65, min=30, max=90),
+            "resolution": P("int", "Diffuse size", default=1024, choices=[512, 1024, 2048]),
+            "size": P("float", "Longest dimension in metres for the FBX (default: as modelled)", min=0.01),
+            "fbx": P("bool", "Also write the Unity FBX + <Name>Diffuse.png", default=True),
+            "model_name": P("str", "", ui=True), "picture_name": P("str", "", ui=True),
+        },
+    },
     "anim": {
         "label": "Character", "page": "anim", "backend": "anim",
         "summary": "Humanoid GLB -> rigged character (Make-It-Animatable, Mixamo skeleton) + animation clips from text (Kimodo): GLB with glTF animations, Unity FBX with one take per clip, BVH per clip.",
@@ -427,7 +460,14 @@ def _check_anim(p):
         raise ParamError("clips: at least one clip with a prompt (or use stage rig)")
 
 
-CHECKS = {"model3d": _check_model3d, "sprite": _check_sprite, "voice_prep": _check_voice_prep, "video": _check_video, "anim": _check_anim}
+def _check_paint(p):
+    if not (p.get("model_url") or p.get("model_upload")):
+        raise ParamError("model_url or model_upload: the modelled GLB to paint")
+    if not (p.get("picture_url") or p.get("picture_upload")):
+        raise ParamError("picture_url or picture_upload: the reference picture it was modelled from")
+
+
+CHECKS = {"model3d": _check_model3d, "paint": _check_paint, "sprite": _check_sprite, "voice_prep": _check_voice_prep, "video": _check_video, "anim": _check_anim}
 
 
 def validate(kind, params):
@@ -457,6 +497,8 @@ def job_title(kind, params):
         verb = {"rig": "Rig ", "anim": "Animate "}.get(p.get("stage"), "Rig + animate ")
         return verb + (p.get("name") or "Character") + (f": {', '.join(clips)}" if clips else "")
     t = (p.get("name") or p.get("prompt") or "")[:60]
+    if kind == "paint":
+        return "Paint " + (p.get("name") or p.get("model_name") or os.path.splitext(os.path.basename(p.get("model_upload") or p.get("model_url") or "prop"))[0])
     if kind == "model3d":
         return {"image": "Reference image: ", "model": "3D from image: "}.get(p.get("stage"), "") + t
     return t

@@ -58,7 +58,7 @@ studio_cli.py cancel <job id>
 - Exit code 0 = `done`. 1 = the job ended `error` or `cancelled`: the JSON has `error` and `log_tail`; read them,
   fix the parameters, resubmit. 2 = the request was rejected (parameter message in `error`) or the studio is down.
 - Typical durations: texture 20-50 s, sprite 30 s-2 min, voice line 5-20 s (+20 s first load), music ~1 s per
-  second of audio (+40 s first load), sound effect ~25 s per take (+20 s first load), 3D model 3 min (25 min for `detailed`), rig 10 s + 10-30 s per clip,
+  second of audio (+40 s first load), sound effect ~25 s per take (+20 s first load), 3D model 3 min (25 min for `detailed`), paint 2-3 min, rig 10 s + 10-30 s per clip,
   video ~40 s per second of footage. Set `--timeout` accordingly for `--wait`.
 
 ## 3. Results
@@ -70,6 +70,7 @@ in `seed`: re-submitting with the same parameters and `--seed <n>` reproduces th
 | kind | outputs | where |
 |---|---|---|
 | `model3d` | `glb`, `fbx`, `diffuse_fbx` (PNG), `reference` | `ai-3d/assets/<Name>.glb` / `.fbx` / `Diffuse.png` |
+| `paint` | `glb`, `fbx`, `diffuse`, `reference`, `views[]` | `ai-3d/assets/<Name>.glb` / `.fbx` / `Diffuse.png` |
 | `texture` | `texture` | `ai-3d/assets/textures/<Name>.png` |
 | `sprite` | `sprite` (RGBA PNG) | `ai-3d/assets/sprites/<Name>.png` |
 | `voice` | `files[]` (one wav per take) | `ai-voc/output/<voice>_<mood>_<slug>.wav` |
@@ -99,6 +100,30 @@ or creature in a T-pose, 4000 tris, ready for `anim`), `--preset detailed` (hero
 that matters: `--stage image` first (20 s, returns `outputs.reference`), look at the picture (Read the PNG),
 then resubmit the same parameters with `--stage model --seed <seed from the first job>` (ComfyUI reuses the
 cached picture). `--stage full` for one-shot props.
+
+**paint** (a prop you model yourself, then paint). For props that should look hand-made (furniture, tools,
+containers, signs, camping gear): intentional low-poly shapes at 300-1500 tris instead of a decimated scan. Soft
+organic shapes (a snowy pine, a bush, a creature) did not work this way; use `model3d` for those.
+1. Reference picture: `submit model3d --stage image --prompt "..." --wait`, Read `outputs.reference.path`.
+2. Model it as a Blender script in `<repo>\ai-3d\assets\modelled\<Name>.py` (the folder is not scanned by the
+   library and not tracked by git): `sys.path.insert(0, r"<repo>\ai-3d\scripts")`, `import prop_kit as k`, build
+   the prop from `k.box` (with `bevel`), `k.cyl`, `k.lathe` (profiles: cups, lids, posts), `k.tube` + `k.smooth_curve`
+   (wire handles, poles), `k.edit` (bmesh inset/extrude), `k.mirror_x`, then `k.export("<Name>", <that folder>)`.
+   Metres, Z up, standing on z = 0, **front facing -Y** (the side the picture shows), one `k.mat("Wood", rgb)` per
+   part, named after the part. Run `"C:\Program Files\Blender Foundation\Blender 5.1\blender.exe" -b --python <Name>.py`
+   (it prints `RESULT <glb> tris=... parts=...`). Check the shape before painting: render it with
+   `blender -b --python <repo>\ai-3d\scripts\render_row.py -- <out prefix> <glb>` and Read `<prefix>_clay.png`
+   next to the picture. Proportions and the part layout matter more than small details, which the paint adds.
+3. Paint: `submit paint --model_upload <glb> --picture_upload <reference png> --name <Name> --prompt "stylized 3D game
+   prop, soft hand-painted texture, clean, pastel, <the whole prop and its materials>" --front "<details only the
+   picture's side has: drawers, a printed logo>" --plain "<how every other side looks, covering ALL parts: plain
+   wooden back panel / white plastic lid, plain brown sleeve without print>" --wait --timeout 900`.
+   `--low true` only for props with undersides (chairs, tables). `--lock Snow,Floor` (material names) for plain parts
+   a neighbour's colour bleeds onto (snow around an orange tent, a wooden post under a glowing lantern). ~2-3 min; a
+   small Blender window opens and closes by itself. Check the log's `camera fit: silhouette overlap` (good fits gave 0.64-0.97; below ~0.5 the
+   model does not match the picture or does not face -Y), Read a few `outputs.views` and the `diffuse`.
+   Outputs: `glb`, `fbx`, `diffuse` in `ai-3d/assets/`, like `model3d`. Needs `health` → `backends.paint.installed`
+   (else the user runs `ai-3d\setup_paint.ps1`).
 
 **sprite** (2D characters, cut out to RGBA). Text only: `--prompt "a small round robot with one glowing eye,
 front view, idle pose"`. Edit / re-pose an existing sprite: `--image_upload <png>` (= image 1) and describe

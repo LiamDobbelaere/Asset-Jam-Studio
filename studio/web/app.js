@@ -43,9 +43,9 @@ function modal(content) { const m = $('#modal'), box = $('#modal-box'); box.inne
 $('#modal').addEventListener('click', e => { if (e.target.id === 'modal') $('#modal').classList.add('hidden'); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') $('#modal').classList.add('hidden'); });
 function lightbox(url) { modal(h('img', { src: url })); }
-const KIND_LABEL = { model3d: '3D model', texture: 'Texture', sprite: 'Sprite', voice: 'Voice line', voice_prep: 'Voice prep', music: 'Music', sfx: 'Sound effect', video: 'Video', anim: 'Character' };
+const KIND_LABEL = { model3d: '3D model', texture: 'Texture', sprite: 'Sprite', voice: 'Voice line', voice_prep: 'Voice prep', paint: 'Painted prop', music: 'Music', sfx: 'Sound effect', video: 'Video', anim: 'Character' };
 const AUDIO_KINDS = ['voice', 'music', 'sfx'];
-const pageOf = kind => kind === 'voice_prep' ? 'voice' : kind;   // voice preparation jobs show on the Voice page
+const pageOf = kind => kind === 'voice_prep' ? 'voice' : kind === 'paint' ? 'model3d' : kind;   // voice preparation jobs show on the Voice page, painted props on 3D Models
 
 // ------------------------------------------------------------------ events
 let es;
@@ -229,12 +229,13 @@ function progressBlock(job) {
 function jobActions(job) {
   const a = [];
   if (job.status === 'running' || job.status === 'queued') a.push(h('button', { class: 'btn sm danger', onclick: () => api.post(`/api/jobs/${job.id}/cancel`) }, job.cancel_requested ? 'Cancelling…' : 'Cancel'));
-  else if (job.kind in state.library) a.push(h('button', { class: 'btn sm', title: 'Put these settings back into the form', onclick: () => reuse(job) }, '↻ Reuse settings'));
+  else if (job.kind in state.library || job.kind === 'paint') a.push(h('button', { class: 'btn sm', title: 'Put these settings back into the form', onclick: () => reuse(job) }, '↻ Reuse settings'));
   if (job.status !== 'running') a.push(h('button', { class: 'btn sm', title: 'Remove this job record (files stay)', onclick: () => api.post(`/api/jobs/${job.id}/delete`).then(() => { state.jobs.delete(job.id); if (state.focus[job.kind] === job.id) delete state.focus[job.kind]; scheduleRender(); }) }, 'Forget'));
   return a;
 }
 function reuse(job) {
   if (job.kind === 'video') { const p = job.params; videoFormFromSpec(Object.assign({}, p, { audio: p.audio_upload, shots: p.shots })); buildVideoForm(); $('#video-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); toast('shot list loaded into the form'); return; }
+  if (job.kind === 'paint') { const p = job.params; const fs = state.forms.paint = state.forms.paint || {}; fs.model = p.model_upload ? { path: p.model_upload, name: p.model_name || basename(p.model_upload) } : p.model_url ? { url: p.model_url, name: p.model_name } : null; fs.picture = p.picture_upload ? { path: p.picture_upload, url: p.picture_url, name: p.picture_name || basename(p.picture_upload) } : p.picture_url ? { url: p.picture_url, name: p.picture_name } : null; const form = $('#paint-form'); fillForm(form, p); for (const u of form.querySelectorAll('.field')) if (u.refresh) u.refresh(); form.scrollIntoView({ behavior: 'smooth', block: 'start' }); toast('settings loaded into the paint form'); return; }
   if (job.kind === 'anim') { const p = job.params; const fs = state.forms.anim = state.forms.anim || {}; fs.source = p.mesh_upload ? { path: p.mesh_upload, url: p.mesh_url, name: basename(p.mesh_upload) } : p.source ? { path: p.source, url: p.source_url, name: p.source_name || basename(p.source) } : null; fs.clips = (p.clips || []).map(c => Object.assign({}, c)); fs.values = Object.assign({}, p); buildAnimForm(); $('#anim-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); toast('settings loaded into the form'); return; }
   const form = $(`#page-${job.kind} form`);
   const p = Object.assign({}, job.params);
@@ -279,7 +280,7 @@ function reveal(path) { return path ? h('button', { class: 'btn sm', onclick: ()
 function resultView(job, lib) {
   // job: a job dict (may be null for untracked library items); lib: library item (may be null)
   const kind = job ? job.kind : lib.kind;
-  if (kind === 'model3d') return result3d(job, lib);
+  if (kind === 'model3d' || kind === 'paint') return result3d(job, lib);
   if (kind === 'texture') return resultTexture(job, lib);
   if (kind === 'sprite') return resultSprite(job, lib);
   if (kind === 'voice') return resultVoice(job, lib);
@@ -327,6 +328,12 @@ function result3d(job, lib) {
   const m = job?.meta || lib?.job?.meta || {};
   const p = job?.params || lib?.job?.params || {};
   box.append(h('div', { class: 'actions' }, dl(glb, 'GLB'), dl(o.fbx?.url || lib?.fbx, 'FBX'), dl(diffuse, 'Diffuse PNG'), reveal(o.glb?.path || o.fbx?.path)));
+  if (job?.kind === 'paint' || p.model_url || p.model_upload) {   // a painted prop (library items carry no kind)
+    box.append(kv([['Prompt', copyable(p.prompt)], ['Front only', p.front], ['Other views', p.plain], ['Locked parts', p.lock], ['Low views', p.low ? 'yes' : null], ['Seed', p.seed],
+      ['Camera fit', m.fit && `silhouette overlap ${m.fit.iou}, yaw ${Math.round(m.fit.yaw)}°, elevation ${Math.round(m.fit.elev)}°`],
+      ['Mesh', m.tris && `${m.tris} tris${m.unseen_texels ? ', ' + m.unseen_texels + ' unseen texels filled' : ''}`], ['FBX', o.fbx ? '✓ ' + basename(o.fbx.path) : null]]));
+    return box;
+  }
   box.append(kv([['Prompt', copyable(p.prompt)], ['Preset', p.preset], ['3D model', p.model], ['Seed', p.seed ?? m.seed], ['Shape', p.shape && `${p.shape}${m.tris ? ', ' + m.tris + ' tris' : ''}`], ['Edges', m.edges && `${m.edges}, remesh ${m.remesh}, normal map ${m.normalmap ? 'on (' + (m.normal_from || 'remesh') + ')' : 'off'}${m.texture_from ? ', colours from ' + m.texture_from : ''}${p.dissolve ? ', dissolve ' + p.dissolve + '°' : ''}`], ['Resolution', m.resolution && `shape ${m.resolution}, texture ${m.texture}`], ['Size', p.size && p.size + ' m'], ['FBX', m.fbx_error ? '✗ ' + m.fbx_error : (o.fbx ? '✓ ' + basename(o.fbx.path) : null)]]));
   return box;
 }
@@ -550,6 +557,53 @@ function build3dForm() {
     if (!p.prompt.trim() && !fs.reference) return toast('write a prompt (or give a reference image)', 'err');
     if (fs.reference) { p.reference_upload = fs.reference.path; p.reference_url = fs.reference.url; if (stage === 'image') return toast('with your own reference image there is no image stage: use the full run', 'err'); }
     submit('model3d', p);
+  };
+  return h('div', { class: 'stack' }, form, buildPaintForm());
+}
+function pickReference(cb) {
+  // a reference picture from the 3D library (what a prop was modelled from)
+  loadLibrary('model3d').then(() => {
+    const items = (state.library.model3d || []).filter(it => it.reference);
+    const grid = h('div', { class: 'grid' });
+    for (const it of items) grid.append(h('div', { class: 'tile', onclick: () => { cb({ url: it.reference, name: it.name + ' reference' }); $('#modal').classList.add('hidden'); } },
+      h('div', { class: 'img' }, h('img', { src: it.reference, loading: 'lazy' })), h('div', { class: 'cap' }, h('b', {}, it.name), h('span', {}, fmtDate(it.mtime)))));
+    modal(h('div', { style: { width: '70vw', maxHeight: '75vh', overflow: 'auto' } }, h('h3', { style: { marginBottom: '10px' } }, 'Pick the reference picture'), items.length ? grid : h('div', { class: 'empty' }, 'No reference pictures in the 3D library yet: make one with "1 · Reference image only" above')));
+  });
+}
+function buildPaintForm() {
+  const fs = state.forms.paint = state.forms.paint || {};
+  const form = h('form', { class: 'card form', id: 'paint-form', onsubmit: e => e.preventDefault() });
+  const warn = h('div', {});
+  const showReady = P => { const r = P && P._paint; warn.innerHTML = ''; if (r && !r.ready) warn.append(h('div', { class: 'errbox' }, 'Painting is not set up (' + Object.keys(r).filter(k => k !== 'ready' && !r[k]).join(', ') + ' missing): run ai-3d\\setup_paint.ps1, then restart ComfyUI.')); };
+  if (state.presets3d) showReady(state.presets3d); else api.get('/api/presets3d').then(P => { state.presets3d = P; showReady(P); }).catch(() => {});
+  form.append(h('div', { class: 'card-head' }, h('h2', {}, 'Paint a modelled prop')),
+    h('div', { class: 'hint' }, 'For props modelled in Blender, by hand or by Claude with ai-3d/scripts/prop_kit.py (front facing -Y, one named material per part). StableGen paints them from the picture they were modelled from: SDXL views with a depth ControlNet and the picture as IP-Adapter, projected and baked into one diffuse.'),
+    warn,
+    modelBox(fs, 'model', 'Modelled prop (GLB)', 'Pick the modelled prop to paint'),
+    uploadBox('paint', 'picture', 'Reference picture', { hint: 'The picture the prop was modelled from', pick: pickReference }),
+    field('Prompt', h('textarea', { name: 'prompt', placeholder: 'stylized 3D game prop, soft hand-painted texture, clean, pastel, wooden office desk with a pedestal' }), 'The whole prop and its materials; sent to every view.'),
+    field('Front only', text('front', '', { placeholder: 'drawers with metal handles on the front' }), "Details only the picture's side has (a logo, drawers): kept out of the other views so they are not repeated all round."),
+    field('Other views', text('plain', '', { placeholder: 'plain flat wooden back panel, no drawers' }), 'How every other view looks, for the whole prop: a top view told only "plain cardboard sleeve" paints the lid as cardboard.'),
+    h('div', { class: 'two' }, field('Asset name', text('name', '', { placeholder: 'from the GLB' })), field('Lock parts', text('lock', '', { placeholder: 'Snow,Floor' }), 'Material names of plain parts: they keep the shading but one colour, so bleed from a neighbour is removed.')),
+    check('low', 'Low views: paint the underside too (chairs, tables). Off for other props: there they invent a second logo', false),
+    seedField(),
+    h('details', {}, h('summary', {}, 'Advanced'),
+      h('div', { class: 'two' }, field('IP-Adapter strength', num('ipadapter', 0.8, { step: 0.05, min: 0, max: 1.5 }), 'How much the picture steers every view.'), field('Discard angle (°)', num('discard', 65, { step: 5, min: 30, max: 90 }), 'A view paints only faces turned less than this far from it.')),
+      h('div', { class: 'two' }, field('Diffuse size', select('resolution', [512, 1024, 2048], 1024)), field('Size (m)', num('size', '', { placeholder: 'as modelled', step: 0.1, min: 0.01 }))),
+      check('fbx', 'Also write the Unity FBX + <Name>Diffuse.png', true)),
+    h('div', { class: 'actions' }, h('button', { class: 'btn primary block', type: 'button', onclick: () => run() }, '🖌 Paint')),
+    h('div', { class: 'hint' }, 'About 2–3 minutes. A small Blender window opens while StableGen paints (its generator needs one); leave it be, it closes by itself.'));
+  const run = () => {
+    const p = readForm(form);
+    if (!fs.model) return toast('pick the modelled GLB (3D library or a file)', 'err');
+    if (!fs.picture) return toast('pick the reference picture it was modelled from', 'err');
+    if (!p.prompt.trim()) return toast('describe the prop in the prompt', 'err');
+    if (fs.model.path) p.model_upload = fs.model.path; else p.model_url = fs.model.url;
+    p.model_name = fs.model.name;
+    if (fs.picture.path) p.picture_upload = fs.picture.path; else p.picture_url = fs.picture.url;
+    p.picture_name = fs.picture.name;
+    p.resolution = Number(p.resolution);
+    submit('paint', p);
   };
   return form;
 }
@@ -1176,14 +1230,14 @@ function specToParams(spec) { const fs = {}; const f = Object.assign({}, state.f
 
 // ------------------------------------------------------------------ animate (ai-anim: Make-It-Animatable + Kimodo)
 function buildAnimFormShell() { return h('form', { class: 'card form', id: 'anim-form', onsubmit: e => e.preventDefault() }, h('div', { class: 'empty' }, 'loading…')); }
-function modelBox(fs, key, label) {
+function modelBox(fs, key, label, pickTitle) {
   // source model for rigging: a GLB/FBX/OBJ upload, or a GLB picked from the 3D library (kept as a /files/ URL)
   const inp = h('input', { type: 'file', accept: '.glb,.gltf,.fbx,.obj', class: 'hidden' });
   const box = h('div', { class: 'drop' });
   const render = () => {
     const v = fs[key]; box.innerHTML = '';
     if (v) box.append(v.thumb ? h('img', { src: v.thumb }) : h('span', { class: 'ph' }, '⬡'), h('div', { class: 'txt' }, h('b', {}, v.name || basename(v.path || v.url)), h('br'), h('span', { class: 'dim' }, v.path ? 'uploaded file' : 'from the 3D library')), h('span', { class: 'x', title: 'remove', onclick: e => { e.stopPropagation(); delete fs[key]; render(); } }, '✕'));
-    else box.append(h('div', { class: 'txt' }, h('b', {}, label), h('br'), 'Drop a GLB (or FBX / OBJ) here, click to choose, or ', h('a', { href: '#', onclick: e => { e.preventDefault(); e.stopPropagation(); pickModel(v2 => { fs[key] = v2; render(); }); } }, 'pick from the 3D library')));
+    else box.append(h('div', { class: 'txt' }, h('b', {}, label), h('br'), 'Drop a GLB (or FBX / OBJ) here, click to choose, or ', h('a', { href: '#', onclick: e => { e.preventDefault(); e.stopPropagation(); pickModel(v2 => { fs[key] = v2; render(); }, pickTitle); } }, 'pick from the 3D library')));
   };
   box.onclick = () => inp.click();
   box.ondragover = e => { e.preventDefault(); box.classList.add('over'); };
@@ -1196,12 +1250,12 @@ function modelBox(fs, key, label) {
   wrap.refresh = render;
   return wrap;
 }
-function pickModel(cb) {
+function pickModel(cb, title = 'Pick a 3D model to rig') {
   const items = (state.library.model3d || []).filter(it => it.glb);
   const grid = h('div', { class: 'grid' });
   for (const it of items) grid.append(h('div', { class: 'tile', onclick: () => { cb({ url: it.glb, name: it.name, thumb: it.thumb || it.reference || it.diffuse }); $('#modal').classList.add('hidden'); } },
     h('div', { class: 'img' }, (it.thumb || it.reference || it.diffuse) ? h('img', { src: it.thumb || it.reference || it.diffuse, loading: 'lazy' }) : h('span', { class: 'ph' }, '⬡')), h('div', { class: 'cap' }, h('b', {}, it.name), h('span', {}, fmtDate(it.mtime)))));
-  modal(h('div', { style: { width: '70vw', maxHeight: '75vh', overflow: 'auto' } }, h('h3', { style: { marginBottom: '10px' } }, 'Pick a 3D model to rig'), items.length ? grid : h('div', { class: 'empty' }, 'No models in the 3D library yet: generate one with the Character preset on the 3D Models page')));
+  modal(h('div', { style: { width: '70vw', maxHeight: '75vh', overflow: 'auto' } }, h('h3', { style: { marginBottom: '10px' } }, title), items.length ? grid : h('div', { class: 'empty' }, 'No models in the 3D library yet: generate one with the Character preset on the 3D Models page')));
 }
 const CLIP_PRESETS = [['Idle', 'A person stands still, breathing calmly, shifting their weight a little and looking around.'], ['Walk', 'A person walks forward at a relaxed, steady pace.'], ['Run', 'A person runs forward.'], ['Wave', 'A person waves hello with their right hand.'], ['Jump', 'A person jumps up in place and lands.'], ['Sit', 'A person sits down on a chair and stays seated.'], ['Talk', 'A person stands and talks, gesturing with both hands.'], ['Dance', 'A person dances happily.']];
 function buildAnimForm() {

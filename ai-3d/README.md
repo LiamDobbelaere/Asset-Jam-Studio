@@ -32,6 +32,7 @@ the download. With `CIVITAI_TOKEN` set in the environment it also fetches the op
 
 ```
 setup.ps1                     one-time install (ComfyUI, venv, patch, workflows, models)
+setup_paint.ps1               optional: StableGen add-on (own Blender profile in blender/) + its models, for paint.bat
 patches/                      local ComfyUI patches applied by setup.ps1
 custom_nodes/ai3d_seamless/   our ComfyUI nodes: seamless tiling for Z-Image (installed by setup.ps1)
 custom_nodes/ai3d_project/    our ComfyUI node: projects the reference picture onto Pixal3D meshes (installed by setup.ps1)
@@ -39,9 +40,15 @@ start_comfyui.bat             start the server (http://127.0.0.1:8188)
 generate.bat "prompt" [...]   command-line text → GLB
 texture.bat "prompt" [...]    command-line text → seamless world texture PNG (walls, floors, ground)
 sprite.bat "prompt" [...]     command-line 2D sprite edit / new pose from references / text → transparent PNG
+paint.bat model.glb pic.png "prompt"   paint a modelled prop from its reference picture (StableGen)
 scripts/generate.py           the 3D CLI (queues the API workflow, waits, prints paths)
 scripts/texture.py            the texture CLI
 scripts/sprite.py             the 2D sprite CLI (FLUX.2 klein)
+scripts/prop_kit.py           Blender modelling helpers for props written as scripts (box, lathe, tube, export)
+scripts/paint.py              the paint CLI: mask, camera fit, StableGen, bake, FBX
+scripts/paint_fit.py          finds the picture's camera by matching the model's silhouette to its mask
+scripts/paint_drive.py        Blender (windowed): runs StableGen with per-view prompts
+scripts/paint_bake.py         Blender (headless): bake, fill unseen texels, lock plain parts, export
 scripts/build_texture_workflow.py   regenerates both text_to_texture workflow files from one graph
 scripts/build_sprite_workflow.py    same for the sprite_edit workflow files (uses scripts/ui_export.py)
 workflows/text_to_3d_gameasset.json        UI workflow, low-poly game-asset preset (in ComfyUI's sidebar)
@@ -61,6 +68,8 @@ ComfyUI/output/3d/            generated GLB files (ComfyUI_00001.glb, ...)
 ComfyUI/output/text_to_3d/    generated reference images
 ComfyUI/output/texture/       generated textures (tile, preview2x2; raw and tile_repaint with --tile crossfade)
 ComfyUI/output/sprite/        generated sprites (raw = painted on white, rgba = cut out)
+ComfyUI/output/paint/         paint.bat work folders: mask, camera fit, painted views, StableGen scene
+blender/                      Blender profile holding the StableGen add-on (setup_paint.ps1), git-ignored
 ```
 
 ## Presets
@@ -161,6 +170,43 @@ The hidden side keeps the voxel bake, shifted per colour towards what the pictur
 a white lid stays white. On a coffee cup with a frog logo and a cooler with a big "G" the logo, its outline and the
 handles come out as crisp as the picture; the seam to the baked side does not show. TRELLIS.2 is not
 pixel-aligned, so `--model trellis2` always uses the voxels. `--texture-from voxels` is the old bake.
+
+### Modelled + painted props (`paint.bat`)
+
+The closest match to hand-made low-poly props is to model them the same way: a Blender script that box-models
+the prop from its reference picture (`scripts/prop_kit.py`: bevelled boxes, cylinders, lathed profiles, tubes along
+a path, mirror; Claude writes these through the studio skill), then paint it. A desk comes out at ~900 triangles with
+real drawers and a pedestal, a chair at ~1500, a coffee cup at ~500. `paint.bat` paints such a model from the picture
+with [StableGen](https://github.com/sakalond/StableGen) (GPL-3.0 Blender add-on, installed by `setup_paint.ps1` into
+its own Blender profile under `blender/`; ~16 GB of models): SDXL (RealVisXL 5) with a depth ControlNet and the
+picture as IP-Adapter paints one view per camera in ComfyUI, StableGen projects them onto the mesh, and one diffuse
+is baked on a fresh UV unwrap. ~2-3 minutes per prop.
+
+```bash
+paint.bat Desk.glb reference.png "stylized 3D game prop, soft hand-painted texture, clean, pastel, wooden office desk | drawers with metal handles on the front | plain flat wooden back panel, no drawers" --low
+```
+
+- Model conventions: metres, Z up, standing on z = 0, front facing -Y (the side the picture shows), one material per
+  part named after it (`Wood`, `Snow`, `Lid`) with roughly its colour.
+- Cameras: the picture's own first, found by fitting the model's silhouette to the picture's BiRefNet mask
+  (`scripts/paint_fit.py`), then five around at eye level and one from above, 30° FOV each. `--low` adds two views
+  from below for props with undersides (chair stretchers, table frames); on other props they invented a second
+  logo copied from the picture, so they are off by default.
+- The prompt has three parts: `shared | front-only | other views`. Everything the picture shows on its side only (a
+  logo, drawers) goes in the middle part, which only the picture's camera gets; with one prompt for every view the cup
+  got a frog on every side and the lid, and the desk drawers on its back. The last part describes the plain look
+  of the whole prop for the other views: told only "plain cardboard sleeve", the top view painted the lid as cardboard.
+- `--lock Snow,Floor` (material names): plain parts keep the painted shading but take one colour, the part's median
+  painted colour (or the modelled colour when that median strays). Fixes colour bleeding from a neighbour: the
+  tent's snow came out mostly orange, the lantern's post glowed.
+- Settings that differ from StableGen's ARCHITECTURE preset: discard angle 65° (80° smeared the front logo round
+  the sides), magenta fallback colour for faces no view saw, filled from the neighbouring texels after the bake.
+  StableGen's own "smart" unwrap left a third of a chair's faces at UV (0, 0), so they baked black: the bake uses
+  Blender's Smart UV Project on every face instead (`scripts/paint_bake.py`).
+- StableGen's generator is a modal operator and needs a window: a small Blender window opens behind the others
+  while the views are painted (`scripts/paint_drive.py`) and closes itself.
+- Outputs: `assets/<Name>.glb`, `<Name>Diffuse.png`, `<Name>.fbx`; the views, mask and camera fit stay in
+  `ComfyUI/output/paint/<Name>_<time>/`. In the studio: "Paint a modelled prop" on the 3D Models page.
 
 Prompt tips: describe one object, not a scene. Each preset appends its own style hints (the
 game-asset preset asks for a smooth, rounded low-poly prop with clean hand-painted colours on a plain background)
