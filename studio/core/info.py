@@ -28,6 +28,8 @@ def presets_3d():
                   "fbx": lowpoly, "decimate": lowpoly, "notes": notes.get(k, "")}
     import paint as genpaint
     out["_paint"] = genpaint.readiness()
+    import prop_model
+    out["_claude"] = bool(prop_model.claude_cli())
     out["_shape_round"] = "Round: crease angle 180° (fully smooth shading), remesh 384, default budget 1500 tris, no dissolve"
     out["_edges"] = {k: v for k, v in gen3d.EDGES.items()}
     return out
@@ -59,6 +61,7 @@ def video_info():
 def readiness(comfy_alive):
     """Per back-end: is it installed, and is it usable right now. Served by GET /api/health."""
     import paint as genpaint   # ai-3d/scripts
+    import prop_model
     mus = available_models()
     an = anim_readiness()
     return {
@@ -68,6 +71,8 @@ def readiness(comfy_alive):
         "music": {"installed": mus["ready"], "lms": mus["lms"], "dits": mus["dits"]},
         "sfx": {"installed": sfx_readiness()["ready"]},
         "video": {"installed": os.path.isfile(paths.COMFY_PY) and video_models_present(), "ffmpeg": os.path.isfile(ffmpeg_path())},
+        "prop": {"installed": genpaint.readiness()["ready"] and bool(prop_model.claude_cli()),
+                 "note": "text -> Claude-modelled + painted prop (kind prop): needs paint plus the Claude Code CLI, logged in"},
         "paint": {"installed": genpaint.readiness()["ready"],
                   "note": "paints modelled props (kind paint): needs ComfyUI and ai-3d/setup_paint.ps1"},
         "anim": {"installed": an["ready"], "hf_token": an["hf_token"],

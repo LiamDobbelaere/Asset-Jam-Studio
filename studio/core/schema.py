@@ -280,6 +280,35 @@ KINDS = {
             "audio_url": P("str", "", ui=True),
         },
     },
+    "prop": {
+        "label": "Modelled prop", "page": "model3d", "backend": "comfy",
+        "summary": "Text -> a prop modelled the way an artist box-models it, then painted: Z-Image draws the reference picture, "
+                   "Claude (Claude Code, headless) writes a Blender script with prop_kit.py and revises it against clay renders "
+                   "next to the picture, then the paint flow textures it from the picture with the prompts Claude wrote. "
+                   "GLB + Unity FBX + <Name>Diffuse.png in the 3D library; the script stays in ai-3d/assets/modelled/<Name>/.",
+        "time": "~10-20 min: picture 20 s, modelling 5-15 min (3-6 check rounds), paint 2-3 min",
+        "outputs": {"glb": "the painted model (ai-3d/assets/<Name>.glb)", "fbx": "Unity FBX", "diffuse": "<Name>Diffuse.png",
+                    "reference": "the reference picture", "script": "Claude's Blender script (<Name>.py)",
+                    "checks": "the clay check sheet of every modelling round", "views": "the painted camera views"},
+        "params": {
+            "prompt": P("str", "ONE object: 'a safety orange and black snowmobile with a windshield and two front skis'. Hard-surface "
+                               "props work best (furniture, vehicles, tools, containers, signs); soft organic shapes do not.", required=True),
+            "name": NAME("Snowmobile"),
+            "seed": SEED,
+            "reference_upload": P("path", "Your own reference picture (PNG): skips drawing one"),
+            "reference_url": P("str", "Or a reference picture as a /files/... URL (a 3D model's 'reference' from the library)"),
+            "raw": P("bool", "Raw prompt for the picture: no style hints", default=False),
+            "claude_model": P("str", "Claude model for the modelling (a Claude Code alias or model id; empty = the CLI's own default)", default="opus"),
+            "effort": P("str", "Claude's reasoning effort (empty: its default)", choices=["", "low", "medium", "high", "xhigh", "max"]),
+            "rounds": P("int", "Most build + check rounds Claude may take", default=6, min=1, max=12),
+            "ipadapter": P("float", "Paint: IP-Adapter strength", default=0.8, min=0, max=1.5),
+            "discard": P("float", "Paint: discard angle in degrees", default=65, min=30, max=90),
+            "resolution": P("int", "Diffuse size", default=1024, choices=[512, 1024, 2048]),
+            "size": P("float", "Longest dimension in metres for the FBX (default: as modelled, real size)", min=0.01),
+            "fbx": P("bool", "Also write the Unity FBX + <Name>Diffuse.png", default=True),
+            "reference_name": P("str", "", ui=True),
+        },
+    },
     "paint": {
         "label": "Painted prop", "page": "model3d", "backend": "comfy",
         "summary": "Paint a modelled prop (a GLB written with ai-3d/scripts/prop_kit.py) from the reference picture it was modelled "
@@ -497,6 +526,8 @@ def job_title(kind, params):
         verb = {"rig": "Rig ", "anim": "Animate "}.get(p.get("stage"), "Rig + animate ")
         return verb + (p.get("name") or "Character") + (f": {', '.join(clips)}" if clips else "")
     t = (p.get("name") or p.get("prompt") or "")[:60]
+    if kind == "prop":
+        return "Model + paint: " + (p.get("name") or p.get("prompt") or "")[:60]
     if kind == "paint":
         return "Paint " + (p.get("name") or p.get("model_name") or os.path.splitext(os.path.basename(p.get("model_upload") or p.get("model_url") or "prop"))[0])
     if kind == "model3d":

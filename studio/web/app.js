@@ -43,9 +43,9 @@ function modal(content) { const m = $('#modal'), box = $('#modal-box'); box.inne
 $('#modal').addEventListener('click', e => { if (e.target.id === 'modal') $('#modal').classList.add('hidden'); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') $('#modal').classList.add('hidden'); });
 function lightbox(url) { modal(h('img', { src: url })); }
-const KIND_LABEL = { model3d: '3D model', texture: 'Texture', sprite: 'Sprite', voice: 'Voice line', voice_prep: 'Voice prep', paint: 'Painted prop', music: 'Music', sfx: 'Sound effect', video: 'Video', anim: 'Character' };
+const KIND_LABEL = { model3d: '3D model', texture: 'Texture', sprite: 'Sprite', voice: 'Voice line', voice_prep: 'Voice prep', paint: 'Painted prop', prop: 'Modelled prop', music: 'Music', sfx: 'Sound effect', video: 'Video', anim: 'Character' };
 const AUDIO_KINDS = ['voice', 'music', 'sfx'];
-const pageOf = kind => kind === 'voice_prep' ? 'voice' : kind === 'paint' ? 'model3d' : kind;   // voice preparation jobs show on the Voice page, painted props on 3D Models
+const pageOf = kind => kind === 'voice_prep' ? 'voice' : kind === 'paint' || kind === 'prop' ? 'model3d' : kind;   // voice preparation jobs show on the Voice page, painted props on 3D Models
 
 // ------------------------------------------------------------------ events
 let es;
@@ -229,15 +229,17 @@ function progressBlock(job) {
 function jobActions(job) {
   const a = [];
   if (job.status === 'running' || job.status === 'queued') a.push(h('button', { class: 'btn sm danger', onclick: () => api.post(`/api/jobs/${job.id}/cancel`) }, job.cancel_requested ? 'Cancelling…' : 'Cancel'));
-  else if (job.kind in state.library || job.kind === 'paint') a.push(h('button', { class: 'btn sm', title: 'Put these settings back into the form', onclick: () => reuse(job) }, '↻ Reuse settings'));
+  else if (job.kind in state.library || job.kind === 'paint' || job.kind === 'prop') a.push(h('button', { class: 'btn sm', title: 'Put these settings back into the form', onclick: () => reuse(job) }, '↻ Reuse settings'));
   if (job.status !== 'running') a.push(h('button', { class: 'btn sm', title: 'Remove this job record (files stay)', onclick: () => api.post(`/api/jobs/${job.id}/delete`).then(() => { state.jobs.delete(job.id); if (state.focus[job.kind] === job.id) delete state.focus[job.kind]; scheduleRender(); }) }, 'Forget'));
   return a;
 }
 function reuse(job) {
   if (job.kind === 'video') { const p = job.params; videoFormFromSpec(Object.assign({}, p, { audio: p.audio_upload, shots: p.shots })); buildVideoForm(); $('#video-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); toast('shot list loaded into the form'); return; }
-  if (job.kind === 'paint') { const p = job.params; const fs = state.forms.paint = state.forms.paint || {}; fs.model = p.model_upload ? { path: p.model_upload, name: p.model_name || basename(p.model_upload) } : p.model_url ? { url: p.model_url, name: p.model_name } : null; fs.picture = p.picture_upload ? { path: p.picture_upload, url: p.picture_url, name: p.picture_name || basename(p.picture_upload) } : p.picture_url ? { url: p.picture_url, name: p.picture_name } : null; const form = $('#paint-form'); fillForm(form, p); for (const u of form.querySelectorAll('.field')) if (u.refresh) u.refresh(); form.scrollIntoView({ behavior: 'smooth', block: 'start' }); toast('settings loaded into the paint form'); return; }
+  if (job.kind === 'prop') { show3dFlow('prop'); const p = job.params; const fs = state.forms.prop = state.forms.prop || {}; fs.reference = p.reference_upload ? { path: p.reference_upload, name: p.reference_name || basename(p.reference_upload) } : p.reference_url ? { url: p.reference_url, name: p.reference_name } : null; if (!fs.reference) delete fs.reference; const form = $('#prop-form'); fillForm(form, p); for (const u of form.querySelectorAll('.field')) if (u.refresh) u.refresh(); form.scrollIntoView({ behavior: 'smooth', block: 'start' }); toast('settings loaded into the form'); return; }
+  if (job.kind === 'paint') { show3dFlow('paint'); const p = job.params; const fs = state.forms.paint = state.forms.paint || {}; fs.model = p.model_upload ? { path: p.model_upload, name: p.model_name || basename(p.model_upload) } : p.model_url ? { url: p.model_url, name: p.model_name } : null; fs.picture = p.picture_upload ? { path: p.picture_upload, url: p.picture_url, name: p.picture_name || basename(p.picture_upload) } : p.picture_url ? { url: p.picture_url, name: p.picture_name } : null; const form = $('#paint-form'); fillForm(form, p); for (const u of form.querySelectorAll('.field')) if (u.refresh) u.refresh(); form.scrollIntoView({ behavior: 'smooth', block: 'start' }); toast('settings loaded into the paint form'); return; }
   if (job.kind === 'anim') { const p = job.params; const fs = state.forms.anim = state.forms.anim || {}; fs.source = p.mesh_upload ? { path: p.mesh_upload, url: p.mesh_url, name: basename(p.mesh_upload) } : p.source ? { path: p.source, url: p.source_url, name: p.source_name || basename(p.source) } : null; fs.clips = (p.clips || []).map(c => Object.assign({}, c)); fs.values = Object.assign({}, p); buildAnimForm(); $('#anim-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); toast('settings loaded into the form'); return; }
-  const form = $(`#page-${job.kind} form`);
+  if (job.kind === 'model3d') show3dFlow('model3d');
+  const form = job.kind === 'model3d' ? $('#model3d-form') : $(`#page-${job.kind} form`);
   const p = Object.assign({}, job.params);
   const fs = state.forms[job.kind] = state.forms[job.kind] || {};
   if (job.kind === 'model3d') { fs.reference = p.reference_upload ? { path: p.reference_upload, url: job.params.reference_url, name: basename(p.reference_upload) } : null; if (!fs.reference) delete fs.reference; }
@@ -280,7 +282,7 @@ function reveal(path) { return path ? h('button', { class: 'btn sm', onclick: ()
 function resultView(job, lib) {
   // job: a job dict (may be null for untracked library items); lib: library item (may be null)
   const kind = job ? job.kind : lib.kind;
-  if (kind === 'model3d' || kind === 'paint') return result3d(job, lib);
+  if (kind === 'model3d' || kind === 'paint' || kind === 'prop') return result3d(job, lib);
   if (kind === 'texture') return resultTexture(job, lib);
   if (kind === 'sprite') return resultSprite(job, lib);
   if (kind === 'voice') return resultVoice(job, lib);
@@ -328,6 +330,15 @@ function result3d(job, lib) {
   const m = job?.meta || lib?.job?.meta || {};
   const p = job?.params || lib?.job?.params || {};
   box.append(h('div', { class: 'actions' }, dl(glb, 'GLB'), dl(o.fbx?.url || lib?.fbx, 'FBX'), dl(diffuse, 'Diffuse PNG'), reveal(o.glb?.path || o.fbx?.path)));
+  if (job?.kind === 'prop' || m.paint) {   // modelled by Claude, then painted (library items carry no kind)
+    const pt = m.paint || {};
+    box.append(h('div', { class: 'actions' }, o.script?.url ? h('a', { class: 'btn sm', href: o.script.url, target: '_blank' }, '{ } Blender script') : null));
+    box.append(kv([['Prompt', copyable(p.prompt)], ['Claude', pt.notes], ['Modelling', m.model_rounds != null && `${m.model_rounds} check round${m.model_rounds === 1 ? '' : 's'}, ${fmtDur(m.model_seconds)}${m.claude_cost_usd ? ', $' + m.claude_cost_usd.toFixed(2) + ' of usage' : ''}`],
+      ['Paint prompt', pt.prompt], ['Front only', pt.front], ['Other views', pt.plain], ['Locked parts', (pt.lock || []).join(', ')], ['Low views', pt.low ? 'yes' : null], ['Seed', p.seed],
+      ['Camera fit', m.fit && `silhouette overlap ${m.fit.iou}, yaw ${Math.round(m.fit.yaw)}°, elevation ${Math.round(m.fit.elev)}°`],
+      ['Mesh', m.tris && `${m.tris} tris`], ['FBX', o.fbx ? '✓ ' + basename(o.fbx.path) : null]]));
+    return box;
+  }
   if (job?.kind === 'paint' || p.model_url || p.model_upload) {   // a painted prop (library items carry no kind)
     box.append(kv([['Prompt', copyable(p.prompt)], ['Front only', p.front], ['Other views', p.plain], ['Locked parts', p.lock], ['Low views', p.low ? 'yes' : null], ['Seed', p.seed],
       ['Camera fit', m.fit && `silhouette overlap ${m.fit.iou}, yaw ${Math.round(m.fit.yaw)}°, elevation ${Math.round(m.fit.elev)}°`],
@@ -527,7 +538,7 @@ async function submit(kind, params, parent) {
 
 function build3dForm() {
   const fs = state.forms.model3d = state.forms.model3d || {};
-  const form = h('form', { class: 'card form', onsubmit: e => e.preventDefault() });
+  const form = h('form', { class: 'card form', id: 'model3d-form', onsubmit: e => e.preventDefault() });
   form.append(h('div', { class: 'card-head' }, h('h2', {}, 'Text → 3D prop')),
     field('Prompt', h('textarea', { name: 'prompt', placeholder: 'an office desk chair with wheels' }), 'One object, not a scene. The preset appends its own style hints (low-poly, hand-painted, plain background).'),
     h('div', { class: 'two' }, field('Asset name', text('name', '', { placeholder: 'DeskChair (from prompt)' })), field('Size (m)', num('size', 1.0, { step: 0.1, min: 0.05 }))),
@@ -558,7 +569,33 @@ function build3dForm() {
     if (fs.reference) { p.reference_upload = fs.reference.path; p.reference_url = fs.reference.url; if (stage === 'image') return toast('with your own reference image there is no image stage: use the full run', 'err'); }
     submit('model3d', p);
   };
-  return h('div', { class: 'stack' }, form, buildPaintForm());
+  return flowChooser(form, buildPropForm(), buildPaintForm());
+}
+// the 3D page has three flows: pick one with a large button, each form has a back button to the choice
+const FLOWS_3D = [
+  { key: 'model3d', icon: '⬡', title: 'Text → 3D prop', sub: 'Generated mesh: Pixal3D builds it from a picture, decimated to a low-poly game asset.', time: '~3 min' },
+  { key: 'prop', icon: '✎', title: 'Text → modelled prop', sub: 'Claude models it in Blender the way an artist box-models it, then it is painted from the picture.', time: '~5–20 min' },
+  { key: 'paint', icon: '🖌', title: 'Paint a modelled prop', sub: 'You already have the model (a GLB from Blender) and its reference picture: paint it.', time: '~2–3 min' },
+];
+function show3dFlow(key) {
+  const host = $('#flow3d'); if (!host) return;
+  host.dataset.flow = key || '';
+  try { if (key) localStorage.setItem('flow3d', key); else localStorage.removeItem('flow3d'); } catch (e) { /* private window: the choice lasts for this page only */ }
+  for (const el of host.children) el.classList.toggle('hidden', key ? el.dataset.flow !== key : el.dataset.flow !== 'pick');
+}
+function flowChooser(...forms) {
+  const pick = h('div', { class: 'card flow-pick', 'data-flow': 'pick' }, h('div', { class: 'card-head' }, h('h2', {}, 'What do you want to make?')),
+    ...FLOWS_3D.map(f => h('button', { type: 'button', class: 'flow-btn', onclick: () => show3dFlow(f.key) },
+      h('span', { class: 'flow-ico' }, f.icon), h('span', { class: 'flow-txt' }, h('b', {}, f.title), h('span', {}, f.sub)), h('span', { class: 'flow-time' }, f.time))));
+  const keys = ['model3d', 'prop', 'paint'];
+  forms.forEach((form, i) => {
+    form.dataset.flow = keys[i];
+    form.querySelector('.card-head').prepend(h('button', { type: 'button', class: 'btn sm', title: 'Back to the choice of flow', onclick: () => show3dFlow(null) }, '← Back'));
+  });
+  const host = h('div', { id: 'flow3d' }, pick, ...forms);
+  let last = null; try { last = localStorage.getItem('flow3d'); } catch (e) { /* no storage */ }
+  setTimeout(() => show3dFlow(keys.includes(last) ? last : null));
+  return host;
 }
 function pickReference(cb) {
   // a reference picture from the 3D library (what a prop was modelled from)
@@ -569,6 +606,35 @@ function pickReference(cb) {
       h('div', { class: 'img' }, h('img', { src: it.reference, loading: 'lazy' })), h('div', { class: 'cap' }, h('b', {}, it.name), h('span', {}, fmtDate(it.mtime)))));
     modal(h('div', { style: { width: '70vw', maxHeight: '75vh', overflow: 'auto' } }, h('h3', { style: { marginBottom: '10px' } }, 'Pick the reference picture'), items.length ? grid : h('div', { class: 'empty' }, 'No reference pictures in the 3D library yet: make one with "1 · Reference image only" above')));
   });
+}
+function buildPropForm() {
+  const fs = state.forms.prop = state.forms.prop || {};
+  const form = h('form', { class: 'card form', id: 'prop-form', onsubmit: e => e.preventDefault() });
+  const warn = h('div', {});
+  const showReady = P => { warn.innerHTML = ''; const r = P && P._paint; const miss = []; if (r && !r.ready) miss.push('painting (run ai-3d\\setup_paint.ps1, then restart ComfyUI)'); if (P && P._claude === false) miss.push('the Claude Code CLI (install Claude Code and log in)'); if (miss.length) warn.append(h('div', { class: 'errbox' }, 'Not set up: ' + miss.join('; ') + '.')); };
+  if (state.presets3d) showReady(state.presets3d); else api.get('/api/presets3d').then(P => { state.presets3d = P; showReady(P); }).catch(() => {});
+  form.append(h('div', { class: 'card-head' }, h('h2', {}, 'Text → modelled prop (Claude)')),
+    h('div', { class: 'hint' }, 'Z-Image draws the reference picture, Claude models the prop in Blender the way an artist box-models it (checking clay renders against the picture each round), then it is painted from the picture. Best for hard-surface props: furniture, vehicles, tools, containers, signs.'),
+    warn,
+    field('Prompt', h('textarea', { name: 'prompt', placeholder: 'a safety orange and black snowmobile with a windshield and two front skis' }), 'One object, not a scene.'),
+    h('div', { class: 'two' }, field('Asset name', text('name', '', { placeholder: 'Snowmobile (from prompt)' })), field('Claude model', select('claude_model', [['opus', 'Opus'], ['sonnet', 'Sonnet'], ['', 'Claude Code default']], 'opus'))),
+    seedField(),
+    uploadBox('prop', 'reference', 'Own reference picture (optional)', { hint: 'Skips drawing one: Claude models from your picture', pick: pickReference }),
+    h('details', {}, h('summary', {}, 'Advanced'),
+      h('div', { class: 'two' }, field('Check rounds (max)', num('rounds', 6, { step: 1, min: 1, max: 12 }), 'Build + compare rounds Claude may take.'), field('Effort', select('effort', [['', 'default'], ['medium', 'medium'], ['high', 'high'], ['xhigh', 'xhigh']], ''))),
+      h('div', { class: 'two' }, field('IP-Adapter strength', num('ipadapter', 0.8, { step: 0.05, min: 0, max: 1.5 })), field('Discard angle (°)', num('discard', 65, { step: 5, min: 30, max: 90 }))),
+      h('div', { class: 'two' }, field('Diffuse size', select('resolution', [512, 1024, 2048], 1024)), field('Size (m)', num('size', '', { placeholder: 'real size', step: 0.1, min: 0.01 }))),
+      check('fbx', 'Also write the Unity FBX + <Name>Diffuse.png', true), check('raw', 'Raw prompt for the picture: no style hints', false)),
+    h('div', { class: 'actions' }, h('button', { class: 'btn primary block', type: 'button', onclick: () => run() }, '▶ Picture → Claude models → paint')),
+    h('div', { class: 'hint' }, 'About 10–20 minutes, mostly Claude modelling (it uses your Claude Code login and usage). The clay check of each round shows up as it goes; a small Blender window opens during the paint.'));
+  const run = () => {
+    const p = readForm(form);
+    if (!p.prompt.trim()) return toast('describe the prop', 'err');
+    if (fs.reference) { if (fs.reference.path) p.reference_upload = fs.reference.path; else p.reference_url = fs.reference.url; p.reference_name = fs.reference.name; }
+    p.resolution = Number(p.resolution);
+    submit('prop', p);
+  };
+  return form;
 }
 function buildPaintForm() {
   const fs = state.forms.paint = state.forms.paint || {};

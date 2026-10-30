@@ -88,7 +88,7 @@ class Runner:
 
     def __init__(self, job, api, pct_range=(0, 100)):
         self.job, self.api = job, api
-        self.is_3d = job.kind == "model3d"
+        self.is_3d = job.kind in ("model3d", "prop")
         self.lo, self.hi = pct_range
         self.total = sum(WEIGHTS.get(n["class_type"], 1) for n in api.values())
         self.finished = set()
@@ -912,7 +912,98 @@ def flow_paint(job):
     job.set_progress(100, "Done", "")
 
 
-FLOWS = {"model3d": flow_model3d, "paint": flow_paint, "texture": flow_texture, "sprite": flow_sprite, "voice": flow_voice, "voice_prep": flow_voice_prep,
+# ---------------------------------------------------------------------------------------------
+# text -> modelled + painted prop: reference picture (Z-Image), Claude models it in Blender (prop_model.py), paint
+
+def flow_prop(job):
+    import paint as genpaint     # ai-3d/scripts
+    import prop_model
+    p = job.params
+    prompt = (p.get("prompt") or "").strip()
+    seed = _int(p.get("seed"))
+    if seed is None:
+        seed = random.randint(0, 2**31)
+        p["seed"] = seed
+    if not prop_model.claude_cli():
+        raise RuntimeError("Claude Code CLI not found: install Claude Code and log in (or set CLAUDE_CLI)")
+    modelled = os.path.join(ASSETS, "modelled")
+    name = unique_name(ASSETS, p.get("name") or gen3d.asset_name(prompt), [".glb", ".fbx"])
+    while os.path.exists(os.path.join(modelled, name)):
+        name = unique_name(ASSETS, name + "_2", [".glb", ".fbx"])
+    job.meta["name"] = name
+    workdir = os.path.join(modelled, name)
+    rounds = _int(p.get("rounds"), 6)
+
+    # 1. the reference picture: given, or drawn like the 3D Models image stage
+    picture = p.get("reference_upload") or url_to_path(p.get("reference_url"))
+    if picture and not os.path.isfile(picture):
+        raise ValueError(f"reference picture not found: {picture}")
+    if not picture:
+        api, info = gen3d.build_api(prompt, "gameasset", bool(p.get("raw")), seed, image_only=True)
+        hist, runner = run_comfy(job, api, (0, 8))
+        for nid, path in history_files(hist, kinds=("images",)):
+            if api.get(nid, {}).get("class_type") == "SaveImage" and "reference" in api[nid]["_meta"]["title"].lower():
+                picture = path
+        if not picture:
+            raise ComfyError("no reference picture in the ComfyUI output")
+    job.outputs["reference"] = {"path": picture, "url": file_url(picture)}
+    job.publish(force=True)
+
+    # 2. Claude models it: a prop_kit script, built and compared with the picture round by round
+    job.set_progress(10, "Claude is modelling", "reading the picture", force=True)
+    seen = {"round": 0}
+
+    def on_event(kind, **d):
+        if kind == "text":
+            job.add_log("claude: " + d["text"].replace("\n", " ")[:300])
+        elif kind == "write":
+            job.set_progress(None, "Claude is modelling", f"writing {os.path.basename(d['path'])}", force=True)
+        elif kind == "check":
+            seen["round"] = d["round"]
+            job.set_progress(10 + 45 * min(d["round"], rounds) / rounds, "Claude is modelling",
+                             f"building + checking, round {d['round']}", force=True)
+        elif kind == "sheet":
+            job.add_intermediate(f"Clay check {d['round']}", "image", d["path"], file_url(d["path"]))
+
+    m = prop_model.model_prop(picture, prompt, workdir, name, model=p.get("claude_model", "opus") or None, rounds=rounds,
+                              effort=p.get("effort") or None, on_event=on_event, should_cancel=lambda: job.cancel_requested)
+    paint = m["paint"]
+    job.meta.update(paint=paint, model_rounds=len(m["sheets"]), model_seconds=m["seconds"], claude_cost_usd=m["cost_usd"],
+                    script=m["script"])
+    job.add_intermediate("Modelled (clay)", "model", m["glb"], file_url(m["glb"]))
+    job.add_log(f"Claude modelled it in {m['seconds']} s, {len(m['sheets'])} check rounds"
+                + (f", ${m['cost_usd']:.2f} of usage" if m.get("cost_usd") else "") + f": {paint.get('notes', '')}")
+
+    # 3. paint it from the same picture with the settings Claude chose
+    def on_file(label, path):
+        url = file_url(path)
+        if url and not any(os.path.abspath(i.get("path") or "") == os.path.abspath(path) for i in job.intermediates):
+            job.add_intermediate(label, "image", path, url)
+
+    def run_api(api):
+        hist, runner = run_comfy(job, api, (56, 58))
+        return [path for nid, path in history_files(hist, kinds=("images",))]
+
+    paint_prompt = " | ".join(s.strip() for s in (paint.get("prompt") or prompt, paint.get("front") or "", paint.get("plain") or ""))
+    out = genpaint.paint(m["glb"], picture, paint_prompt, name, ASSETS, paint.get("lock") or [], bool(paint.get("low")), seed,
+                         _float(p.get("ipadapter"), 0.8), _float(p.get("discard"), 65.0), _int(p.get("resolution"), 1024),
+                         _float(p.get("size")), p.get("fbx", True) is not False, upload=upload_to_comfy, run_api=run_api,
+                         log=job.add_log, on_file=on_file, should_cancel=lambda: job.cancel_requested,
+                         on_progress=lambda pct, phase, detail="": job.set_progress(55 + 0.45 * pct, phase, detail, force=True))
+    job.meta.update(fit={k: round(out["fit"][k], 3) for k in ("iou", "yaw", "elev", "fov")}, tris=out["bake"]["tris"],
+                    unseen_texels=out["bake"]["unseen_texels"], locked=out["bake"]["locked"])
+    job.outputs["views"] = [{"path": v, "url": file_url(v)} for v in out["views"]]
+    job.outputs["checks"] = [{"path": s, "url": file_url(s)} for s in m["sheets"]]
+    job.outputs["script"] = {"path": m["script"], "url": file_url(m["script"])}
+    job.outputs["diffuse"] = {"path": out["diffuse"], "url": file_url(out["diffuse"])}
+    if out.get("fbx"):
+        job.outputs["fbx"] = {"path": out["fbx"], "url": file_url(out["fbx"])}
+    job.outputs["glb"] = {"path": out["glb"], "url": file_url(out["glb"])}
+    job.add_log(f"GLB: {out['glb']}")
+    job.set_progress(100, "Done", "")
+
+
+FLOWS = {"model3d": flow_model3d, "paint": flow_paint, "prop": flow_prop, "texture": flow_texture, "sprite": flow_sprite, "voice": flow_voice, "voice_prep": flow_voice_prep,
          "music": flow_music, "sfx": flow_sfx, "video": flow_video, "anim": flow_anim}
 
 

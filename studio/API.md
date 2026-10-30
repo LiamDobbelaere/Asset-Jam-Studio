@@ -7,7 +7,7 @@ Claude to use it. No authentication: the server listens on localhost only.
 ## The model
 
 - A **job** is one generation request: `{"kind": ..., "params": {...}}`. Kinds: `model3d`, `texture`, `sprite`,
-  `voice`, `voice_prep`, `music`, `sfx`, `video`, `anim`, `paint`.
+  `voice`, `voice_prep`, `music`, `sfx`, `video`, `anim`, `paint`, `prop`.
 - Jobs are **queued and run one at a time**, oldest first, by one worker thread. Only one model set is on the
   GPU at any moment: before a ComfyUI job the voice / music / sfx / animation workers unload their models; before a
   voice, music, sfx or animation job the other workers unload and ComfyUI is asked to free its VRAM. Queuing ten jobs
@@ -22,7 +22,7 @@ Claude to use it. No authentication: the server listens on localhost only.
 
 | Method, path | What |
 |---|---|
-| `GET /api/health` | `{ok, version, backends: {comfy, voice, music, sfx, video, paint, anim}, running, queued, gpu}`: which back-ends are installed and usable right now |
+| `GET /api/health` | `{ok, version, backends: {comfy, voice, music, sfx, video, prop, paint, anim}, running, queued, gpu}`: which back-ends are installed and usable right now |
 | `GET /api/schema` | every kind with its `summary`, typical `time`, `outputs` and `params` (type, help, default, choices, required) |
 | `POST /api/jobs` `{"kind", "params", "parent"?}` | validate and queue; returns the job record (`400` with `{"error"}` when a parameter is wrong) |
 | `GET /api/jobs?kind=&status=&limit=` | recent jobs, newest first (log trimmed to the last 3 lines) |
@@ -57,6 +57,7 @@ against). The short version:
 | `music` | `caption` | `name`, `duration`, `loop`, `crossfade`, `takes`, `seed`, `format wav\|ogg\|flac`, `lyrics`, `instrumental`, `language`, `bpm`, `keyscale`, `timesignature`, `think`, `lm`, `steps`, `shift`, `lm_temperature`, `reference_upload` |
 | `sfx` | `prompt` | `name`, `duration` (0.5-30), `takes`, `seed`, `format wav\|ogg\|flac`, `loop`, `crossfade`, `negative`, `trim`, `normalize`, `peak_db`, `highpass`, `steps`, `cfg`, `shift` |
 | `video` | `shots[]` | `name`, `width`, `height`, `fps`, `transition`, `transition_kind`, `mode full\|keyframes\|assemble`, `only[]`, `audio_upload`, `negative`, `crf` (shot fields: see the schema or `ai-vid/README.md`) |
+| `prop` | `prompt` | `name`, `seed`, `reference_upload` or `reference_url` (skip drawing), `raw`, `claude_model` (default `opus`), `effort`, `rounds`, `ipadapter`, `discard`, `resolution`, `size`, `fbx` |
 | `paint` | `prompt`, `model_url` or `model_upload`, `picture_url` or `picture_upload` | `front`, `plain`, `lock`, `low`, `name`, `seed`, `ipadapter`, `discard`, `resolution`, `size`, `fbx` |
 | `anim` | `source_url` or `mesh_upload` (rig); `clips[]` (anim) | `stage rig\|anim\|full`, `name`, `height`, `no_fingers`, `keep_pose`, `seconds`, `seed`, `steps`, `inplace` |
 
@@ -64,6 +65,7 @@ Outputs by kind (`job.outputs`):
 
 - `model3d`: `glb`, `fbx`, `diffuse_fbx`, `normal_fbx`, `diffuse`, `normal`, `reference` → `{path, url}`
 - `paint`: `glb`, `fbx`, `diffuse`, `reference` → `{path, url}`, `views: [{path, url}]`
+- `prop`: as `paint`, plus `script` (Claude's Blender script) and `checks: [{path, url}]` (clay check per round); `meta.paint` holds Claude's paint settings and notes
 - `texture`: `texture`, `preview2x2`; `sprite`: `sprite`, `raw`
 - `voice`, `music`, `sfx`: `files: [{path, url, seed, duration, meta?}]` (one per take)
 - `video`: `final`, `clips[]`, `keyframes[]`, `project`

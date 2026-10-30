@@ -49,6 +49,10 @@ scripts/paint.py              the paint CLI: mask, camera fit, StableGen, bake, 
 scripts/paint_fit.py          finds the picture's camera by matching the model's silhouette to its mask
 scripts/paint_drive.py        Blender (windowed): runs StableGen with per-view prompts
 scripts/paint_bake.py         Blender (headless): bake, fill unseen texels, lock plain parts, export
+scripts/prop_model.py         runs Claude Code headless to model a prop from its picture (studio kind prop)
+scripts/prop_brief.md         Claude's brief for that: conventions, the build + check loop, the paint answer
+scripts/prop_check.py         builds a prop_kit script and writes check.png (picture + four clay views)
+scripts/prop_views.py         Blender: the four clay views for prop_check.py
 scripts/build_texture_workflow.py   regenerates both text_to_texture workflow files from one graph
 scripts/build_sprite_workflow.py    same for the sprite_edit workflow files (uses scripts/ui_export.py)
 workflows/text_to_3d_gameasset.json        UI workflow, low-poly game-asset preset (in ComfyUI's sidebar)
@@ -70,6 +74,7 @@ ComfyUI/output/texture/       generated textures (tile, preview2x2; raw and tile
 ComfyUI/output/sprite/        generated sprites (raw = painted on white, rgba = cut out)
 ComfyUI/output/paint/         paint.bat work folders: mask, camera fit, painted views, StableGen scene
 blender/                      Blender profile holding the StableGen add-on (setup_paint.ps1), git-ignored
+assets/modelled/<Name>/       Claude's modelling folder per prop: <Name>.py, <Name>.glb (clay), reference.png, check_N.png, claude.jsonl
 ```
 
 ## Presets
@@ -207,6 +212,15 @@ paint.bat Desk.glb reference.png "stylized 3D game prop, soft hand-painted textu
   while the views are painted (`scripts/paint_drive.py`) and closes itself.
 - Outputs: `assets/<Name>.glb`, `<Name>Diffuse.png`, `<Name>.fbx`; the views, mask and camera fit stay in
   `ComfyUI/output/paint/<Name>_<time>/`. In the studio: "Paint a modelled prop" on the 3D Models page.
+
+From a prompt alone, the studio's **Text → modelled prop (Claude)** (job kind `prop`) runs the whole chain: Z-Image
+draws the reference picture, Claude Code runs headless (`scripts/prop_model.py`, `claude -p` with your Claude Code
+login) in `assets/modelled/<Name>/` with `scripts/prop_brief.md` as its brief, writes `<Name>.py` with prop_kit,
+builds it and compares clay renders with the picture (`scripts/prop_check.py` writes `check.png`: the picture and
+four clay views) for a few rounds, then answers with the paint prompts, the parts to lock and whether low views are
+needed; the paint step above uses them. Claude may only write inside that folder, read files and run that one check
+command. The snowmobile prompt took Claude 4 rounds in about 2 minutes (~$0.50 of usage on Opus). The model
+defaults to `opus`; the CLI's own default can be one your plan has no credits for.
 
 Prompt tips: describe one object, not a scene. Each preset appends its own style hints (the
 game-asset preset asks for a smooth, rounded low-poly prop with clean hand-painted colours on a plain background)

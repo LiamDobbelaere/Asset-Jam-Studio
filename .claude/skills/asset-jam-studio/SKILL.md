@@ -70,6 +70,7 @@ in `seed`: re-submitting with the same parameters and `--seed <n>` reproduces th
 | kind | outputs | where |
 |---|---|---|
 | `model3d` | `glb`, `fbx`, `diffuse_fbx` (PNG), `reference` | `ai-3d/assets/<Name>.glb` / `.fbx` / `Diffuse.png` |
+| `prop` | as `paint`, plus `script`, `checks[]` | `ai-3d/assets/<Name>.glb`; script in `ai-3d/assets/modelled/<Name>/` |
 | `paint` | `glb`, `fbx`, `diffuse`, `reference`, `views[]` | `ai-3d/assets/<Name>.glb` / `.fbx` / `Diffuse.png` |
 | `texture` | `texture` | `ai-3d/assets/textures/<Name>.png` |
 | `sprite` | `sprite` (RGBA PNG) | `ai-3d/assets/sprites/<Name>.png` |
@@ -100,6 +101,14 @@ or creature in a T-pose, 4000 tris, ready for `anim`), `--preset detailed` (hero
 that matters: `--stage image` first (20 s, returns `outputs.reference`), look at the picture (Read the PNG),
 then resubmit the same parameters with `--stage model --seed <seed from the first job>` (ComfyUI reuses the
 cached picture). `--stage full` for one-shot props.
+
+**prop** (text -> a prop Claude models in Blender, then painted; all in one job). `--prompt "a safety orange and
+black snowmobile with a windshield and two front skis" --name Snowmobile --wait --timeout 2400`: draws the picture,
+runs a headless Claude Code session that models it with prop_kit (clay checks against the picture), paints it.
+~10-20 min, uses the user's Claude Code usage (`--claude_model opus` is the default). Outputs as `paint` plus
+`script` and `checks[]`. Give `--reference_url` (a library reference) to skip the picture. Use this when the user
+wants a hand-made-looking prop and you do not need to steer the modelling yourself; otherwise do the steps of
+**paint** below yourself.
 
 **paint** (a prop you model yourself, then paint). For props that should look hand-made (furniture, tools,
 containers, signs, camping gear): intentional low-poly shapes at 300-1500 tris instead of a decimated scan. Soft
