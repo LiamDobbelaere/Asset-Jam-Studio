@@ -301,8 +301,9 @@ KINDS = {
             "claude_model": P("str", "Claude model for the modelling (a Claude Code alias or model id; empty = the CLI's own default)", default="opus"),
             "effort": P("str", "Claude's reasoning effort (empty: its default)", choices=["", "low", "medium", "high", "xhigh", "max"]),
             "rounds": P("int", "Most build + check rounds Claude may take", default=6, min=1, max=12),
-            "ipadapter": P("float", "Paint: IP-Adapter strength", default=0.8, min=0, max=1.5),
-            "discard": P("float", "Paint: discard angle in degrees", default=65, min=30, max=90),
+            "ipadapter": P("float", "Paint: IP-Adapter strength (how much the picture styles every view)", default=0.6, min=0, max=1.5),
+            "denoise": P("float", "Paint: how far each view may move from the render of the part colours (default 0.7)", min=0.2, max=1.0),
+            "depth": P("float", "Paint: depth ControlNet strength", default=0.8, min=0, max=1.5),
             "resolution": P("int", "Diffuse size", default=1024, choices=[512, 1024, 2048]),
             "size": P("float", "Longest dimension in metres for the FBX (default: as modelled, real size)", min=0.01),
             "fbx": P("bool", "Also write the Unity FBX + <Name>Diffuse.png", default=True),
@@ -312,8 +313,9 @@ KINDS = {
     "paint": {
         "label": "Painted prop", "page": "model3d", "backend": "comfy",
         "summary": "Paint a modelled prop (a GLB written with ai-3d/scripts/prop_kit.py) from the reference picture it was modelled "
-                   "from: StableGen projects SDXL views (depth ControlNet + IP-Adapter of the picture) onto the mesh in a Blender "
-                   "window, then one diffuse is baked on a fresh UV unwrap: GLB + Unity FBX + <Name>Diffuse.png in the 3D library.",
+                   "from: SDXL repaints a render of the model in its part colours from every side (img2img, depth ControlNet, "
+                   "IP-Adapter of the picture), so all views agree; they are projected onto the mesh and baked in Blender "
+                   "into one diffuse on a fresh UV unwrap: GLB + Unity FBX + <Name>Diffuse.png in the 3D library.",
         "time": "~2-3 min (7 views; 9 with low views)",
         "outputs": {"glb": "the painted model (ai-3d/assets/<Name>.glb)", "fbx": "Unity FBX", "diffuse": "<Name>Diffuse.png",
                     "reference": "the picture it was painted from", "views": "the painted camera views (images)"},
@@ -334,8 +336,11 @@ KINDS = {
                              "frames). Leave off otherwise: on a cup they invented a second logo", default=False),
             "name": P("str", "Asset name (default: the GLB's file name). A suffix _2, _3 ... is added when the name is taken."),
             "seed": SEED,
-            "ipadapter": P("float", "IP-Adapter strength: how much the picture steers every view", default=0.8, min=0, max=1.5),
-            "discard": P("float", "A view paints only faces turned less than this many degrees away from it", default=65, min=30, max=90),
+            "ipadapter": P("float", "IP-Adapter strength: how much the picture styles every view", default=0.6, min=0, max=1.5),
+            "denoise": P("float", "How far each view may move from the render of the model in its part colours: lower keeps the "
+                                  "modelled colours, higher adds more painted detail (default 0.7; 0.85 for a single-material model)",
+                         min=0.2, max=1.0),
+            "depth": P("float", "Depth ControlNet strength: how strictly each view follows the model's shape", default=0.8, min=0, max=1.5),
             "resolution": P("int", "Diffuse size", default=1024, choices=[512, 1024, 2048]),
             "size": P("float", "Longest dimension in metres for the FBX (default: as modelled)", min=0.01),
             "fbx": P("bool", "Also write the Unity FBX + <Name>Diffuse.png", default=True),

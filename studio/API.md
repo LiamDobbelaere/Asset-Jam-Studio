@@ -57,8 +57,8 @@ against). The short version:
 | `music` | `caption` | `name`, `duration`, `loop`, `crossfade`, `takes`, `seed`, `format wav\|ogg\|flac`, `lyrics`, `instrumental`, `language`, `bpm`, `keyscale`, `timesignature`, `think`, `lm`, `steps`, `shift`, `lm_temperature`, `reference_upload` |
 | `sfx` | `prompt` | `name`, `duration` (0.5-30), `takes`, `seed`, `format wav\|ogg\|flac`, `loop`, `crossfade`, `negative`, `trim`, `normalize`, `peak_db`, `highpass`, `steps`, `cfg`, `shift` |
 | `video` | `shots[]` | `name`, `width`, `height`, `fps`, `transition`, `transition_kind`, `mode full\|keyframes\|assemble`, `only[]`, `audio_upload`, `negative`, `crf` (shot fields: see the schema or `ai-vid/README.md`) |
-| `prop` | `prompt` | `name`, `seed`, `reference_upload` or `reference_url` (skip drawing), `raw`, `claude_model` (default `opus`), `effort`, `rounds`, `ipadapter`, `discard`, `resolution`, `size`, `fbx` |
-| `paint` | `prompt`, `model_url` or `model_upload`, `picture_url` or `picture_upload` | `front`, `plain`, `lock`, `low`, `name`, `seed`, `ipadapter`, `discard`, `resolution`, `size`, `fbx` |
+| `prop` | `prompt` | `name`, `seed`, `reference_upload` or `reference_url` (skip drawing), `raw`, `claude_model` (default `opus`), `effort`, `rounds`, `ipadapter`, `denoise`, `depth`, `resolution`, `size`, `fbx` |
+| `paint` | `prompt`, `model_url` or `model_upload`, `picture_url` or `picture_upload` | `front`, `plain`, `lock`, `low`, `name`, `seed`, `ipadapter`, `denoise`, `depth`, `resolution`, `size`, `fbx` |
 | `anim` | `source_url` or `mesh_upload` (rig); `clips[]` (anim) | `stage rig\|anim\|full`, `name`, `height`, `no_fingers`, `keep_pose`, `seconds`, `seed`, `steps`, `inplace` |
 
 Outputs by kind (`job.outputs`):

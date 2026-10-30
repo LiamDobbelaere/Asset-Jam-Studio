@@ -130,7 +130,7 @@ organic shapes (a snowy pine, a bush, a creature) did not work this way; use `mo
    the prop from `k.box` (with `bevel`), `k.cyl`, `k.lathe` (profiles: cups, lids, posts), `k.tube` + `k.smooth_curve`
    (wire handles, poles), `k.edit` (bmesh inset/extrude), `k.mirror_x`, then `k.export("<Name>", <that folder>)`.
    Metres, Z up, standing on z = 0, **front facing -Y** (the side the picture shows), one `k.mat("Wood", rgb)` per
-   part, named after the part. Run `"C:\Program Files\Blender Foundation\Blender 5.1\blender.exe" -b --python <Name>.py`
+   part, named after the part, in the colour the picture shows it (the paint starts from these colours). Run `"C:\Program Files\Blender Foundation\Blender 5.1\blender.exe" -b --python <Name>.py`
    (it prints `RESULT <glb> tris=... parts=...`). Check the shape before painting: render it with
    `blender -b --python <repo>\ai-3d\scripts\render_row.py -- <out prefix> <glb>` and Read `<prefix>_clay.png`
    next to the picture. Proportions and the part layout matter more than small details, which the paint adds.
@@ -139,8 +139,8 @@ organic shapes (a snowy pine, a bush, a creature) did not work this way; use `mo
    picture's side has: drawers, a printed logo>" --plain "<how every other side looks, covering ALL parts: plain
    wooden back panel / white plastic lid, plain brown sleeve without print>" --wait --timeout 900`.
    `--low true` only for props with undersides (chairs, tables). `--lock Snow,Floor` (material names) for plain parts
-   a neighbour's colour bleeds onto (snow around an orange tent, a wooden post under a glowing lantern). ~2-3 min; a
-   small Blender window opens and closes by itself. Check the log's `camera fit: silhouette overlap` (good fits gave 0.64-0.97; below ~0.5 the
+   a neighbour's colour bleeds onto (snow around an orange tent, a wooden post under a glowing lantern). ~2-3 min.
+   Every view starts from a render of your model in its part colours, so get those colours right. Check the log's `camera fit: silhouette overlap` (good fits gave 0.64-0.97; below ~0.5 the
    model does not match the picture or does not face -Y), Read a few `outputs.views` and the `diffuse`.
    Outputs: `glb`, `fbx`, `diffuse` in `ai-3d/assets/`, like `model3d`. Needs `health` → `backends.paint.installed`
    (else the user runs `ai-3d\setup_paint.ps1`).

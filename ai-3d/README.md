@@ -32,7 +32,7 @@ the download. With `CIVITAI_TOKEN` set in the environment it also fetches the op
 
 ```
 setup.ps1                     one-time install (ComfyUI, venv, patch, workflows, models)
-setup_paint.ps1               optional: StableGen add-on (own Blender profile in blender/) + its models, for paint.bat
+setup_paint.ps1               optional: IP-Adapter nodes + the SDXL models paint.bat uses (~12 GB)
 patches/                      local ComfyUI patches applied by setup.ps1
 custom_nodes/ai3d_seamless/   our ComfyUI nodes: seamless tiling for Z-Image (installed by setup.ps1)
 custom_nodes/ai3d_project/    our ComfyUI node: projects the reference picture onto Pixal3D meshes (installed by setup.ps1)
@@ -40,15 +40,16 @@ start_comfyui.bat             start the server (http://127.0.0.1:8188)
 generate.bat "prompt" [...]   command-line text → GLB
 texture.bat "prompt" [...]    command-line text → seamless world texture PNG (walls, floors, ground)
 sprite.bat "prompt" [...]     command-line 2D sprite edit / new pose from references / text → transparent PNG
-paint.bat model.glb pic.png "prompt"   paint a modelled prop from its reference picture (StableGen)
+paint.bat model.glb pic.png "prompt"   paint a modelled prop from its reference picture (SDXL from part-colour renders)
 scripts/generate.py           the 3D CLI (queues the API workflow, waits, prints paths)
 scripts/texture.py            the texture CLI
 scripts/sprite.py             the 2D sprite CLI (FLUX.2 klein)
 scripts/prop_kit.py           Blender modelling helpers for props written as scripts (box, lathe, tube, export)
-scripts/paint.py              the paint CLI: mask, camera fit, StableGen, bake, FBX
+scripts/paint.py              the paint CLI: mask, camera fit, guides, one SDXL img2img per view, projection, FBX
 scripts/paint_fit.py          finds the picture's camera by matching the model's silhouette to its mask
-scripts/paint_drive.py        Blender (windowed): runs StableGen with per-view prompts
-scripts/paint_bake.py         Blender (headless): bake, fill unseen texels, lock plain parts, export
+scripts/paint_guides.py       Blender: renders the model in its part colours + depth from every paint camera
+scripts/paint_project.py      Blender: projects the painted views onto the model, bakes, locks plain parts, exports
+scripts/download_paint_models.py   model downloader used by setup_paint.ps1
 scripts/prop_model.py         runs Claude Code headless to model a prop from its picture (studio kind prop)
 scripts/prop_brief.md         Claude's brief for that: conventions, the build + check loop, the paint answer
 scripts/prop_check.py         builds a prop_kit script and writes check.png (picture + four clay views)
@@ -72,8 +73,7 @@ ComfyUI/output/3d/            generated GLB files (ComfyUI_00001.glb, ...)
 ComfyUI/output/text_to_3d/    generated reference images
 ComfyUI/output/texture/       generated textures (tile, preview2x2; raw and tile_repaint with --tile crossfade)
 ComfyUI/output/sprite/        generated sprites (raw = painted on white, rgba = cut out)
-ComfyUI/output/paint/         paint.bat work folders: mask, camera fit, painted views, StableGen scene
-blender/                      Blender profile holding the StableGen add-on (setup_paint.ps1), git-ignored
+ComfyUI/output/paint/         paint.bat work folders: mask, camera fit, guides, painted views
 assets/modelled/<Name>/       Claude's modelling folder per prop: <Name>.py, <Name>.glb (clay), reference.png, check_N.png, claude.jsonl
 ```
 
@@ -181,18 +181,25 @@ pixel-aligned, so `--model trellis2` always uses the voxels. `--texture-from vox
 The closest match to hand-made low-poly props is to model them the same way: a Blender script that box-models
 the prop from its reference picture (`scripts/prop_kit.py`: bevelled boxes, cylinders, lathed profiles, tubes along
 a path, mirror; Claude writes these through the studio skill), then paint it. A desk comes out at ~900 triangles with
-real drawers and a pedestal, a chair at ~1500, a coffee cup at ~500. `paint.bat` paints such a model from the picture
-with [StableGen](https://github.com/sakalond/StableGen) (GPL-3.0 Blender add-on, installed by `setup_paint.ps1` into
-its own Blender profile under `blender/`; ~16 GB of models): SDXL (RealVisXL 5) with a depth ControlNet and the
-picture as IP-Adapter paints one view per camera in ComfyUI, StableGen projects them onto the mesh, and one diffuse
-is baked on a fresh UV unwrap. ~2-3 minutes per prop.
+real drawers and a pedestal, a chair at ~1500, a coffee cup at ~500. `paint.bat` paints such a model from the picture:
+it renders the model **in its own part colours** from every camera (`scripts/paint_guides.py`) and SDXL (RealVisXL 5 +
+the 8-step Lightning LoRA) repaints each render (img2img, denoise 0.7) held to the model's depth (ControlNet 0.8) and
+styled by the picture (IP-Adapter Plus, 0.6). Because every view starts from the same colours on the same shape, the
+views agree; `scripts/paint_project.py` projects them onto the model and bakes one diffuse on a fresh UV unwrap.
+~2-3 minutes per prop; `setup_paint.ps1` installs the IP-Adapter nodes and ~12 GB of models.
 
 ```bash
 paint.bat Desk.glb reference.png "stylized 3D game prop, soft hand-painted texture, clean, pastel, wooden office desk | drawers with metal handles on the front | plain flat wooden back panel, no drawers" --low
 ```
 
 - Model conventions: metres, Z up, standing on z = 0, front facing -Y (the side the picture shows), one material per
-  part named after it (`Wood`, `Snow`, `Lid`) with roughly its colour.
+  part named after it (`Wood`, `Snow`, `Lid`) with its colour: the colours are where every view starts. A model with
+  a single material gets a grey guide and denoise 0.85, so the picture decides more.
+- Why not generate the views from noise: the first version did, with [StableGen](https://github.com/sakalond/StableGen)
+  (SDXL, depth ControlNet 0.6, IP-Adapter). Every view drew its own version of the object (a second seat on a
+  snowmobile, a wheeled track where the model has a solid tunnel), and projected together the views smeared: the
+  snowmobile lost its track. Starting from the part-colour render keeps the layout, so the views can only add detail
+  (track lugs, stripes, panel lines). It also needs no Blender window and no add-on.
 - Cameras: the picture's own first, found by fitting the model's silhouette to the picture's BiRefNet mask
   (`scripts/paint_fit.py`), then five around at eye level and one from above, 30° FOV each. `--low` adds two views
   from below for props with undersides (chair stretchers, table frames); on other props they invented a second
@@ -204,13 +211,12 @@ paint.bat Desk.glb reference.png "stylized 3D game prop, soft hand-painted textu
 - `--lock Snow,Floor` (material names): plain parts keep the painted shading but take one colour, the part's median
   painted colour (or the modelled colour when that median strays). Fixes colour bleeding from a neighbour: the
   tent's snow came out mostly orange, the lantern's post glowed.
-- Settings that differ from StableGen's ARCHITECTURE preset: discard angle 65° (80° smeared the front logo round
-  the sides), magenta fallback colour for faces no view saw, filled from the neighbouring texels after the bake.
-  StableGen's own "smart" unwrap left a third of a chair's faces at UV (0, 0), so they baked black: the bake uses
-  Blender's Smart UV Project on every face instead (`scripts/paint_bake.py`).
-- StableGen's generator is a modal operator and needs a window: a small Blender window opens behind the others
-  while the views are painted (`scripts/paint_drive.py`) and closes itself.
-- Outputs: `assets/<Name>.glb`, `<Name>Diffuse.png`, `<Name>.fbx`; the views, mask and camera fit stay in
+- Projection (`scripts/paint_project.py`): every texel's position and normal are baked, and a view colours a texel
+  only where the texel's depth matches the view's depth map (hidden surfaces are skipped) and away from silhouette and
+  depth edges (the picture bleeds background there); views are weighted by facing^6, the picture's own view 1.5x.
+  Texels no view saw keep the part colour with baked ambient occlusion.
+- `--denoise` (0.7): lower keeps the modelled colours, higher adds painted detail; `--depth` (0.8), `--ipadapter` (0.6).
+- Outputs: `assets/<Name>.glb`, `<Name>Diffuse.png`, `<Name>.fbx`; the guides, views, mask and camera fit stay in
   `ComfyUI/output/paint/<Name>_<time>/`. In the studio: "Paint a modelled prop" on the 3D Models page.
 
 From a prompt alone, the studio's **Text → modelled prop (Claude)** (job kind `prop`) runs the whole chain: Z-Image

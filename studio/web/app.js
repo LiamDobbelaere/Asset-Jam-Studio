@@ -342,7 +342,7 @@ function result3d(job, lib) {
   if (job?.kind === 'paint' || p.model_url || p.model_upload) {   // a painted prop (library items carry no kind)
     box.append(kv([['Prompt', copyable(p.prompt)], ['Front only', p.front], ['Other views', p.plain], ['Locked parts', p.lock], ['Low views', p.low ? 'yes' : null], ['Seed', p.seed],
       ['Camera fit', m.fit && `silhouette overlap ${m.fit.iou}, yaw ${Math.round(m.fit.yaw)}°, elevation ${Math.round(m.fit.elev)}°`],
-      ['Mesh', m.tris && `${m.tris} tris${m.unseen_texels ? ', ' + m.unseen_texels + ' unseen texels filled' : ''}`], ['FBX', o.fbx ? '✓ ' + basename(o.fbx.path) : null]]));
+      ['Mesh', m.tris && `${m.tris} tris${m.seen != null ? ', views reached ' + Math.round(m.seen * 100) + '% of the surface' : ''}${m.denoise ? ', denoise ' + m.denoise : ''}`], ['FBX', o.fbx ? '✓ ' + basename(o.fbx.path) : null]]));
     return box;
   }
   box.append(kv([['Prompt', copyable(p.prompt)], ['Preset', p.preset], ['3D model', p.model], ['Seed', p.seed ?? m.seed], ['Shape', p.shape && `${p.shape}${m.tris ? ', ' + m.tris + ' tris' : ''}`], ['Edges', m.edges && `${m.edges}, remesh ${m.remesh}, normal map ${m.normalmap ? 'on (' + (m.normal_from || 'remesh') + ')' : 'off'}${m.texture_from ? ', colours from ' + m.texture_from : ''}${p.dissolve ? ', dissolve ' + p.dissolve + '°' : ''}`], ['Resolution', m.resolution && `shape ${m.resolution}, texture ${m.texture}`], ['Size', p.size && p.size + ' m'], ['FBX', m.fbx_error ? '✗ ' + m.fbx_error : (o.fbx ? '✓ ' + basename(o.fbx.path) : null)]]));
@@ -622,11 +622,11 @@ function buildPropForm() {
     uploadBox('prop', 'reference', 'Own reference picture (optional)', { hint: 'Skips drawing one: Claude models from your picture', pick: pickReference }),
     h('details', {}, h('summary', {}, 'Advanced'),
       h('div', { class: 'two' }, field('Check rounds (max)', num('rounds', 6, { step: 1, min: 1, max: 12 }), 'Build + compare rounds Claude may take.'), field('Effort', select('effort', [['', 'default'], ['medium', 'medium'], ['high', 'high'], ['xhigh', 'xhigh']], ''))),
-      h('div', { class: 'two' }, field('IP-Adapter strength', num('ipadapter', 0.8, { step: 0.05, min: 0, max: 1.5 })), field('Discard angle (°)', num('discard', 65, { step: 5, min: 30, max: 90 }))),
+      h('div', { class: 'two' }, field('IP-Adapter strength', num('ipadapter', 0.6, { step: 0.05, min: 0, max: 1.5 })), field('Denoise', num('denoise', '', { placeholder: '0.7', step: 0.05, min: 0.2, max: 1 }))),
       h('div', { class: 'two' }, field('Diffuse size', select('resolution', [512, 1024, 2048], 1024)), field('Size (m)', num('size', '', { placeholder: 'real size', step: 0.1, min: 0.01 }))),
       check('fbx', 'Also write the Unity FBX + <Name>Diffuse.png', true), check('raw', 'Raw prompt for the picture: no style hints', false)),
     h('div', { class: 'actions' }, h('button', { class: 'btn primary block', type: 'button', onclick: () => run() }, '▶ Picture → Claude models → paint')),
-    h('div', { class: 'hint' }, 'About 10–20 minutes, mostly Claude modelling (it uses your Claude Code login and usage). The clay check of each round shows up as it goes; a small Blender window opens during the paint.'));
+    h('div', { class: 'hint' }, 'About 10–20 minutes, mostly Claude modelling (it uses your Claude Code login and usage). The clay check of each round shows up as it goes, then each painted view.'));
   const run = () => {
     const p = readForm(form);
     if (!p.prompt.trim()) return toast('describe the prop', 'err');
@@ -643,7 +643,7 @@ function buildPaintForm() {
   const showReady = P => { const r = P && P._paint; warn.innerHTML = ''; if (r && !r.ready) warn.append(h('div', { class: 'errbox' }, 'Painting is not set up (' + Object.keys(r).filter(k => k !== 'ready' && !r[k]).join(', ') + ' missing): run ai-3d\\setup_paint.ps1, then restart ComfyUI.')); };
   if (state.presets3d) showReady(state.presets3d); else api.get('/api/presets3d').then(P => { state.presets3d = P; showReady(P); }).catch(() => {});
   form.append(h('div', { class: 'card-head' }, h('h2', {}, 'Paint a modelled prop')),
-    h('div', { class: 'hint' }, 'For props modelled in Blender, by hand or by Claude with ai-3d/scripts/prop_kit.py (front facing -Y, one named material per part). StableGen paints them from the picture they were modelled from: SDXL views with a depth ControlNet and the picture as IP-Adapter, projected and baked into one diffuse.'),
+    h('div', { class: 'hint' }, 'For props modelled in Blender, by hand or by Claude with ai-3d/scripts/prop_kit.py (front facing -Y, one named material per part). SDXL repaints a render of the model in its part colours from every side (depth ControlNet, the picture as IP-Adapter), so the views agree; they are projected and baked into one diffuse.'),
     warn,
     modelBox(fs, 'model', 'Modelled prop (GLB)', 'Pick the modelled prop to paint'),
     uploadBox('paint', 'picture', 'Reference picture', { hint: 'The picture the prop was modelled from', pick: pickReference }),
@@ -654,11 +654,11 @@ function buildPaintForm() {
     check('low', 'Low views: paint the underside too (chairs, tables). Off for other props: there they invent a second logo', false),
     seedField(),
     h('details', {}, h('summary', {}, 'Advanced'),
-      h('div', { class: 'two' }, field('IP-Adapter strength', num('ipadapter', 0.8, { step: 0.05, min: 0, max: 1.5 }), 'How much the picture steers every view.'), field('Discard angle (°)', num('discard', 65, { step: 5, min: 30, max: 90 }), 'A view paints only faces turned less than this far from it.')),
+      h('div', { class: 'two' }, field('IP-Adapter strength', num('ipadapter', 0.6, { step: 0.05, min: 0, max: 1.5 }), 'How much the picture styles every view.'), field('Denoise', num('denoise', '', { placeholder: '0.7', step: 0.05, min: 0.2, max: 1 }), 'How far each view may move from the render of the part colours: lower keeps the modelled colours, higher adds detail. Default 0.7 (0.85 for a single-material model).')),
       h('div', { class: 'two' }, field('Diffuse size', select('resolution', [512, 1024, 2048], 1024)), field('Size (m)', num('size', '', { placeholder: 'as modelled', step: 0.1, min: 0.01 }))),
       check('fbx', 'Also write the Unity FBX + <Name>Diffuse.png', true)),
     h('div', { class: 'actions' }, h('button', { class: 'btn primary block', type: 'button', onclick: () => run() }, '🖌 Paint')),
-    h('div', { class: 'hint' }, 'About 2–3 minutes. A small Blender window opens while StableGen paints (its generator needs one); leave it be, it closes by itself.'));
+    h('div', { class: 'hint' }, 'About 2–3 minutes. Give the parts their colours in the model (one named material per part): every view starts from them.'));
   const run = () => {
     const p = readForm(form);
     if (!fs.model) return toast('pick the modelled GLB (3D library or a file)', 'err');

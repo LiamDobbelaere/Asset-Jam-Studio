@@ -27,8 +27,13 @@ paint. Work in this folder only.
   handles, frames, rails, poles), and `k.edit(obj, fn)` with bmesh for anything else (move vertices to taper or
   bend a box, inset, extrude). Rotate parts with `rot=` (radians). `k.mirror_x` for symmetric parts.
 - Parts must touch or overlap where they are joined in the picture: nothing floats.
+- Give visible mechanical parts real volume and their own material: a snowmobile track or tank tread is a long
+  rounded box (or lathed wheels in a belt) that clearly sticks out under the body, wheels are cylinders, a grille or
+  vent is an inset panel. A thin strip under the body does not show up in the paint.
 - One material per kind of part, named after it in PascalCase (`Body`, `Seat`, `Windshield`, `Ski`, `Wood`,
-  `Metal`, `Snow`), with roughly its colour from the picture (linear RGB 0-1). The paint uses the names.
+  `Metal`, `Snow`), with its colour from the picture (linear RGB 0-1). Get the colours right: the paint starts
+  every view from a render of your model in these colours, so they set where each colour goes. Give parts that
+  differ in colour in the picture their own material (a white stripe, a black bumper, a dark seat).
 - 300-3000 triangles. Spend them on the silhouette (rounded edges with `bevel`/`segs`, 12-24 segments on round parts),
   not on details smaller than ~2 % of the object: those are painted.
 - Model what the picture shows, nothing extra (no ground plane, no background, no text).
