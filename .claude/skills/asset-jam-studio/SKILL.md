@@ -58,7 +58,7 @@ studio_cli.py cancel <job id>
 - Exit code 0 = `done`. 1 = the job ended `error` or `cancelled`: the JSON has `error` and `log_tail`; read them,
   fix the parameters, resubmit. 2 = the request was rejected (parameter message in `error`) or the studio is down.
 - Typical durations: texture 20-50 s, sprite 30 s-2 min, voice line 5-20 s (+20 s first load), music ~1 s per
-  second of audio (+40 s first load), sound effect ~25 s per take (+20 s first load), 3D model 3 min (25 min for `detailed`), paint 2-3 min, rig 10 s + 10-30 s per clip,
+  second of audio (+40 s first load), sound effect ~25 s per take (+20 s first load), 3D model 3 min (25 min for `detailed`), paint 2-3 min, modelled prop 5-20 min, rig 10 s + 10-30 s per clip,
   video ~40 s per second of footage. Set `--timeout` accordingly for `--wait`.
 
 ## 3. Results
@@ -94,7 +94,18 @@ layout; never say "outlines" or "seams" as general words (it draws a grid). `--w
 grids aligned; `--tile crossfade` for flat walls. `--lora 0.8` only for grass, fabric, glazed tiles.
 `--reference_upload <png> --strength 0.4` makes a variant of an existing texture.
 
-**model3d** (props and characters). ONE object, not a scene: `--prompt "a wooden barrel with iron bands"`.
+**Which 3D flow.** Pick by what the object is, not by which is fastest:
+- Hard-surface props (furniture, vehicles, tools, containers, signs, machines, camping gear, anything a person would
+  box-model): **`prop`**, the default for props. Its intentional low-poly shapes match hand-made props; a generated
+  mesh is decimated from a scan-like surface and looks melted next to them.
+- Characters and creatures (they go on to `anim`), and soft organic things (plants, trees, food, rocks, cloth, blobs):
+  **`model3d`**. `prop` cannot model those. Also `model3d` for a quick throwaway draft: `prop` takes 5-20 min and
+  spends the user's Claude usage, `model3d` ~3 min and none.
+- **`paint`** only when the model already exists (the user's own GLB, or a `prop` result whose shape you fix by
+  editing its `script`), or when you model a prop yourself because `prop` got it wrong twice.
+When the user names a flow or says "generated" / "modelled", do that instead.
+
+**model3d** (characters, organic props, quick drafts). ONE object, not a scene: `--prompt "a potted fern in a clay pot"`.
 `--preset gameasset` (default: remesh 512, 3000 tris decimated then planar-dissolved to ~1200-2400, FBX + diffuse + normal map for Unity/three.js; add `--remesh 256` for props with perforated parts such as a mesh chair back or a grille, where 512 makes the decimator stall), `--preset character` (a person
 or creature in a T-pose, 4000 tris, ready for `anim`), `--preset detailed` (hero model, 700k tris, GLB only,
 25 min). The game-asset diffuse is the reference picture itself projected onto the faces the camera saw (`--texture_from picture`, default; `voxels` = the old soft bake), so logos, labels and colours come out exactly as in the picture: judge the picture strictly. `--shape round` for bottles, pots, balls. `--size 1.2` = longest side in metres. Workflow for anything
@@ -105,10 +116,10 @@ cached picture). `--stage full` for one-shot props.
 **prop** (text -> a prop Claude models in Blender, then painted; all in one job). `--prompt "a safety orange and
 black snowmobile with a windshield and two front skis" --name Snowmobile --wait --timeout 2400`: draws the picture,
 runs a headless Claude Code session that models it with prop_kit (clay checks against the picture), paints it.
-~10-20 min, uses the user's Claude Code usage (`--claude_model opus` is the default). Outputs as `paint` plus
-`script` and `checks[]`. Give `--reference_url` (a library reference) to skip the picture. Use this when the user
-wants a hand-made-looking prop and you do not need to steer the modelling yourself; otherwise do the steps of
-**paint** below yourself.
+~5-20 min, uses the user's Claude Code usage (`--claude_model opus` is the default). Outputs as `paint` plus
+`script` and `checks[]`. Give `--reference_url` (a library reference) to skip the picture. Check the result like a
+`model3d` one (Read `checks[-1]` and a few `views`); if the shape is wrong, edit `outputs.script.path` (see **paint**
+step 2), rebuild it and resubmit it as a `paint` job with the same picture instead of re-running `prop`.
 
 **paint** (a prop you model yourself, then paint). For props that should look hand-made (furniture, tools,
 containers, signs, camping gear): intentional low-poly shapes at 300-1500 tris instead of a decimated scan. Soft
@@ -186,7 +197,8 @@ repo also work directly).
 ## 5. Building a game with it
 
 1. `health`; start ComfyUI if needed. `library ...` for reusable assets.
-2. Plan the asset list, then queue by kind: textures and sprites and 3D models (ComfyUI), then voice lines,
+2. Plan the asset list (for 3D: modelled `prop` for hard-surface props, `model3d` for characters and organic
+   things, see "Which 3D flow"), then queue by kind: textures and sprites and 3D models (ComfyUI), then voice lines,
    then music, then sound effects. Submit without `--wait`, keep the ids, keep coding, `wait` on each id when you need the file.
 3. Copy `outputs.*.path` files into the game folder (e.g. `assets/textures/CobbleStreet.png`); load GLBs with
    three.js `GLTFLoader`, sprites as textures with alpha, music/voice/sound effects as `<audio>` or Web Audio buffers (ogg or wav).
