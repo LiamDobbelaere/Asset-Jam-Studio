@@ -1,7 +1,7 @@
 """Paint a modelled prop from its reference picture: SDXL repaints renders of the model itself from every side, the
 views are projected onto the mesh and baked into one diffuse, exported as GLB + FBX.
 
-    paint.bat Model.glb picture.png "shared prompt | front-only details | plain wording" [--name Desk] [--lock Snow,Floor] [--low]
+    paint.bat Model.glb picture.png "shared prompt | front-only details | plain wording" [--name Desk] [--lock Snow,Floor] [--low] [--style inked]
 
 The model comes from a Blender script (prop_kit.py: metres, Z up, front facing -Y, one named material per part with
 roughly its colour); the picture is what it was modelled from, e.g. a 3D Models reference image. Needs ComfyUI running
@@ -10,6 +10,13 @@ Steps: background mask of the picture (BiRefNet) -> camera fit (paint_fit.py) ->
 and its depth from each camera (paint_guides.py) -> one SDXL img2img per view in ComfyUI: RealVisXL + Lightning LoRA,
 depth ControlNet, the picture as IP-Adapter, starting from the guide so every view keeps the same layout of parts and
 colours -> projection + bake, part locks (paint_project.py) -> FBX + <Name>Diffuse.png. ~1-2 min.
+--style <id> paints in a style guide (ai-3d/styles/<id>.json, prop_style.py): its prompt and negative words go to every
+view, it sets the IP-Adapter / denoise / depth defaults, and its finish restyles the bake (flat colours, painted
+shading, ink lines on the hard edges). A style can paint the views with FLUX.2 klein instead ("painter": "klein"):
+img2img from the guide like SDXL, but klein follows "hand-painted, flat colours, outlines" where RealVisXL keeps
+drifting to glossy photo materials. klein has no depth ControlNet, so the denoise holds the layout: at 0.75 the
+views keep the guide's silhouette (overlap 0.95-0.99), at 0.85 a back view turned into a second front. The other
+views take "denoise_other" (0.6): at 0.75 klein painted a vending machine's window and buttons on its plain back.
 Generating the views from noise instead (StableGen, the first version) gave every view its own idea of the object, and
 projected together they smeared: a snowmobile got a second seat in one view and lost its track in the bake.
 """
@@ -23,6 +30,7 @@ import time
 import uuid
 
 import generate as gen3d
+import prop_style
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCRIPTS = os.path.join(ROOT, "scripts")
@@ -35,6 +43,8 @@ MODELS = {"checkpoint": ("checkpoints", "RealVisXL_V5.0_fp16.safetensors"),
           "depth_controlnet": ("controlnet", "controlnet_depth_sdxl.safetensors"),
           "ipadapter": ("ipadapter", "ip-adapter-plus_sdxl_vit-h.safetensors"),
           "clip_vision": ("clip_vision", "CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors")}
+KLEIN = {"unet": ("diffusion_models", "flux-2-klein-4b-fp8.safetensors"), "clip": ("text_encoders", "qwen_3_4b_fp8_mixed.safetensors"),
+         "vae": ("vae", "flux2-vae.safetensors")}
 NEGATIVE = ("photo, photorealistic, text, watermark, harsh shadows, specular highlights, reflections, dirt, noise, blurry, "
             "background clutter")
 
@@ -60,7 +70,7 @@ def mask_api(image_name, prefix):
     }
 
 
-def view_api(guide, depth, picture, text, seed, prefix, denoise=0.7, depth_strength=0.8, ipadapter=0.6):
+def view_api(guide, depth, picture, text, seed, prefix, denoise=0.7, depth_strength=0.8, ipadapter=0.6, negative=NEGATIVE):
     """ComfyUI prompt: one view, SDXL img2img from the guide render (uploaded names), held to the depth map, styled by
     the picture. 8 Lightning steps, the sampler settings StableGen's ARCHITECTURE preset uses."""
     return {
@@ -68,7 +78,7 @@ def view_api(guide, depth, picture, text, seed, prefix, denoise=0.7, depth_stren
         "2": {"class_type": "LoraLoader", "_meta": {"title": "Lightning LoRA"},
               "inputs": {"lora_name": MODELS["lightning_lora"][1], "strength_model": 1.0, "strength_clip": 1.0, "model": ["1", 0], "clip": ["1", 1]}},
         "3": {"class_type": "CLIPTextEncode", "_meta": {"title": "Prompt"}, "inputs": {"clip": ["2", 1], "text": text}},
-        "4": {"class_type": "CLIPTextEncode", "_meta": {"title": "Negative"}, "inputs": {"clip": ["2", 1], "text": NEGATIVE}},
+        "4": {"class_type": "CLIPTextEncode", "_meta": {"title": "Negative"}, "inputs": {"clip": ["2", 1], "text": negative}},
         "5": {"class_type": "IPAdapterUnifiedLoader", "_meta": {"title": "IP-Adapter"}, "inputs": {"preset": "PLUS (high strength)", "model": ["2", 0]}},
         "6": {"class_type": "LoadImage", "_meta": {"title": "Reference picture"}, "inputs": {"image": picture}},
         "7": {"class_type": "IPAdapter", "_meta": {"title": "Style from the picture"},
@@ -87,6 +97,29 @@ def view_api(guide, depth, picture, text, seed, prefix, denoise=0.7, depth_stren
         "14": {"class_type": "VAEDecode", "_meta": {"title": "Decode"}, "inputs": {"samples": ["13", 0], "vae": ["1", 2]}},
         "15": {"class_type": "SaveImage", "_meta": {"title": "Painted view"}, "inputs": {"images": ["14", 0], "filename_prefix": prefix}},
     }
+
+
+def klein_view_api(guide, picture, text, seed, prefix, denoise=0.75, steps=8):
+    """ComfyUI prompt: one view repainted by FLUX.2 klein 4B (the sprite flow's edit workflow) as img2img: the guide is
+    image 1 and the starting latent, the picture (or None) image 2 for the style. The distilled model's 8-step
+    schedule is cut to the last `denoise` part, so the guide's layout stays put."""
+    api = json.load(open(os.path.join(ROOT, "workflows", "sprite_edit_api.json"), encoding="utf-8"))
+    api["1"]["inputs"]["unet_name"] = KLEIN["unet"][1]
+    api["5"]["inputs"]["text"] = text
+    api["10"]["inputs"]["image"] = guide
+    api["11"]["inputs"]["megapixels"] = 1.0
+    api["43"]["inputs"]["noise_seed"] = seed
+    api["41"]["inputs"]["steps"] = steps
+    if picture:
+        api["20"]["inputs"]["image"] = picture
+        api["44"]["inputs"].update(positive=["23", 0], negative=["24", 0], cfg=1.0)
+    else:
+        api["44"]["inputs"].update(positive=["14", 0], negative=["15", 0], cfg=1.0)
+    api["70"] = {"class_type": "SplitSigmasDenoise", "_meta": {"title": "img2img from the guide"},
+                 "inputs": {"sigmas": ["41", 0], "denoise": denoise}}
+    api["45"]["inputs"].update(latent_image=["13", 0], sigmas=["70", 1])
+    api["47"]["inputs"]["filename_prefix"] = prefix
+    return gen3d.prune_to(api, ["47"])
 
 
 def _cli_upload(path, name):
@@ -118,6 +151,16 @@ def _cli_run(api):
             for o in hist[pid].get("outputs", {}).values() for it in o.get("images", [])]
 
 
+def _save_view(src, dst, res):
+    """Copy a painted view, scaled to the guide's resolution if the model returned another size."""
+    from PIL import Image
+    im = Image.open(src)
+    if im.size != (res, res):
+        im.convert("RGB").resize((res, res), Image.LANCZOS).save(dst)
+    else:
+        shutil.copyfile(src, dst)
+
+
 def safe_name(s, fallback="Prop"):
     s = re.sub(r"[^A-Za-z0-9_\-]+", "", s or "")
     return s or fallback
@@ -131,18 +174,30 @@ def _blender(args, what):
     return r.stdout
 
 
-def paint(glb, picture, prompt, name=None, out_dir=None, lock=(), low=False, seed=None, ipadapter=0.6, denoise=None,
-          depth=0.8, resolution=1024, size=None, fbx=True, upload=_cli_upload, run_api=_cli_run, log=print,
-          on_progress=lambda pct, phase, detail="": None, on_file=lambda label, path: None, should_cancel=lambda: False):
+def paint(glb, picture, prompt, name=None, out_dir=None, lock=(), low=False, seed=None, ipadapter=None, denoise=None,
+          depth=None, resolution=1024, size=None, fbx=True, upload=_cli_upload, run_api=_cli_run, log=print,
+          on_progress=lambda pct, phase, detail="": None, on_file=lambda label, path: None, should_cancel=lambda: False,
+          style=None):
     """Paint glb from picture; returns a dict with glb, diffuse, fbx (or None), views, guides, workdir, fit, bake.
     prompt: "shared | front-only details | plain wording for the other views"; lock: material names of plain parts.
     denoise: how far each view may move away from the guide (default 0.7, 0.85 for a model with a single material,
     whose guide is just grey). upload(path, name) -> ComfyUI input name, run_api(api) -> saved image paths: the studio
-    passes its own; on_file(label, path) reports the mask, the guides, each painted view and the diffuse."""
-    rd = readiness()
-    missing = [k for k, v in rd.items() if k != "ready" and not v]
-    if missing:
-        raise RuntimeError(f"painting is not set up ({', '.join(missing)} missing): run ai-3d/setup_paint.ps1")
+    passes its own; on_file(label, path) reports the mask, the guides, each painted view and the diffuse.
+    style: a style guide id (prop_style.py) or None; ipadapter / denoise / depth left None take its values."""
+    st = prop_style.load(style) if isinstance(style, str) or style is None else style
+    sp = st["paint"] if st else {}
+    painter = sp.get("painter", "sdxl")
+    if painter == "klein":   # FLUX.2 klein (setup.ps1 installs it for the sprite flow) instead of the SDXL stack
+        missing = [f for d, f in KLEIN.values() if not os.path.isfile(os.path.join(COMFY, "models", d, f))]
+        missing += [] if os.path.isfile(BLENDER) else ["blender"]
+        if missing:
+            raise RuntimeError(f"the {st['id']} style paints with FLUX.2 klein, which is not installed ({', '.join(missing)}): "
+                               "run ai-3d/setup.ps1")
+    else:
+        rd = readiness()
+        missing = [k for k, v in rd.items() if k != "ready" and not v]
+        if missing:
+            raise RuntimeError(f"painting is not set up ({', '.join(missing)} missing): run ai-3d/setup_paint.ps1")
     name = safe_name(name or os.path.splitext(os.path.basename(glb))[0])
     out_dir = out_dir or os.path.join(ROOT, "assets")
     work = os.path.join(WORK, f"{name}_{time.strftime('%Y%m%d-%H%M%S')}")
@@ -152,6 +207,11 @@ def paint(glb, picture, prompt, name=None, out_dir=None, lock=(), low=False, see
     shutil.copyfile(glb, src)
     shared, front, plain = ([p.strip() for p in prompt.split("|")] + ["", ""])[:3]
     seed = 1000 if seed is None else int(seed)
+    ipadapter = sp.get("ipadapter", 0.6) if ipadapter is None else ipadapter
+    depth = sp.get("depth", 0.8) if depth is None else depth
+    denoise = sp.get("denoise") if denoise is None else denoise
+    negative = NEGATIVE + (", " + sp["negative"] if sp.get("negative") else "")
+    finish = sp.get("finish") or {}
 
     def check_cancel():
         if should_cancel():
@@ -176,13 +236,15 @@ def paint(glb, picture, prompt, name=None, out_dir=None, lock=(), low=False, see
     check_cancel()
 
     on_progress(9, "Guides", "the model in its part colours and its depth, from every camera")
-    outp = _blender(["--python", os.path.join(SCRIPTS, "paint_guides.py"), "--", src, camf, gdir] + (["low"] if low else []),
-                    "rendering the guides")
+    outp = _blender(["--python", os.path.join(SCRIPTS, "paint_guides.py"), "--", src, camf, gdir] + (["low"] if low else [])
+                    + (["flat"] if sp.get("guide_light") == "flat" else []), "rendering the guides")
     nviews, nparts = map(int, next(ln for ln in outp.splitlines() if ln.startswith("GUIDES ")).split()[1:3])
     if denoise is None:
         denoise = 0.7 if nparts > 1 else 0.85
-    log(f"{nviews} views, {nparts} part colour{'s' if nparts != 1 else ''} in the guide, denoise {denoise}, "
-        f"depth {depth}, IP-Adapter {ipadapter}, seed {seed}")
+    log(f"{nviews} views, {nparts} part colour{'s' if nparts != 1 else ''} in the guide, denoise {denoise}"
+        + (f" (other views {sp['denoise_other']})" if painter == "klein" and sp.get("denoise_other") else "") + ", "
+        + (f"depth {depth}, IP-Adapter {ipadapter}" if painter == "sdxl" else "FLUX.2 klein") + f", seed {seed}"
+        + (f", style {st['id']}" if st else ""))
     cams = json.load(open(os.path.join(gdir, "cams.json")))
     on_file("Guide (front)", os.path.join(gdir, "guide_0.png"))
 
@@ -191,21 +253,37 @@ def paint(glb, picture, prompt, name=None, out_dir=None, lock=(), low=False, see
         check_cancel()
         on_progress(12 + 70 * i / nviews, "Painting views", f"{i + 1}/{nviews}: {c['what']}")
         detail = front if i == 0 else plain
-        text = f"{c['what']}{', ' + detail if detail else ''}, {shared}, plain light grey background"
         g = upload(os.path.join(gdir, f"guide_{i}.png"), f"paint_{name}_{tag}_g{i}.png")
-        d = upload(os.path.join(gdir, f"depth_{i}.png"), f"paint_{name}_{tag}_d{i}.png")
-        files = run_api(view_api(g, d, pic_name, text, seed + i, f"paint/{os.path.basename(work)}/view{i}",
-                                 denoise, depth, ipadapter))
+        prefix = f"paint/{os.path.basename(work)}/view{i}"
+        if painter == "klein":
+            # an instruction; the picture only for its own view: with it on the back view, klein painted the
+            # vending machine's window and buttons there too
+            if i == 0:
+                text = (f"Repaint image 1 as a finished hand-painted 3D game prop in the art style of image 2: {shared}, "
+                        f"seen in a {c['what']}{', ' + detail if detail else ''}. ")
+            else:
+                text = (f"Repaint image 1 as a finished hand-painted 3D game prop: {shared}, seen in a {c['what']}"
+                        f"{', ' + detail if detail else ''}. Paint only the details image 1 shows and keep every surface "
+                        "that is plain in image 1 plain: no windows, displays, labels, screens or buttons that are not in image 1. ")
+            text += ("Exactly the same shape, outline, camera angle, framing and part colours as image 1. "
+                     + (sp["prompt"] + ", " if sp.get("prompt") else "") + "plain light grey background")
+            files = run_api(klein_view_api(g, pic_name if i == 0 else None, text, seed + i, prefix,
+                                           denoise if i == 0 else sp.get("denoise_other", denoise)))
+        else:
+            text = f"{c['what']}{', ' + detail if detail else ''}, {shared}, {sp['prompt'] + ', ' if sp.get('prompt') else ''}plain light grey background"
+            d = upload(os.path.join(gdir, f"depth_{i}.png"), f"paint_{name}_{tag}_d{i}.png")
+            files = run_api(view_api(g, d, pic_name, text, seed + i, prefix, denoise, depth, ipadapter, negative))
         if not files:
             raise RuntimeError(f"ComfyUI returned no image for view {i + 1}")
-        shutil.copyfile(files[0], os.path.join(vdir, f"view_{i}.png"))
+        _save_view(files[0], os.path.join(vdir, f"view_{i}.png"), c["res"])
         on_file(f"View {i + 1}", files[0])
     log(f"painted {nviews} views in {time.time() - t0:.0f} s")
 
     check_cancel()
-    on_progress(84, "Baking", "projecting the views, unseen texels from the part colours" + (", parts locked" if lock else ""))
+    on_progress(84, "Baking", "projecting the views, unseen texels from the part colours" + (", parts locked" if lock else "")
+                + (f", {st['id']} finish" if finish else ""))
     outp = _blender(["--python", os.path.join(SCRIPTS, "paint_project.py"), "--", src, gdir, vdir, work, name,
-                     ",".join(lock), str(resolution)], "projecting the views")
+                     ",".join(lock), str(resolution), json.dumps(finish) if finish else ""], "projecting the views")
     bake = json.loads(next(ln for ln in outp.splitlines() if ln.startswith("PAINTBAKE {"))[len("PAINTBAKE "):])
     log(f"baked: {bake['tris']} tris, views reached {bake['seen']:.0%} of the surface"
         + (f", locked {', '.join(f'{k} {v}' for k, v in bake['locked'].items())}" if bake["locked"] else ""))
@@ -220,7 +298,8 @@ def paint(glb, picture, prompt, name=None, out_dir=None, lock=(), low=False, see
     on_file("Diffuse", diffuse)
     out = {"glb": dst, "diffuse": diffuse, "fbx": None, "workdir": work, "fit": fit, "bake": bake, "mask": masks[0],
            "views": [os.path.join(vdir, f"view_{i}.png") for i in range(nviews)],
-           "guides": [os.path.join(gdir, f"guide_{i}.png") for i in range(nviews)], "denoise": denoise}
+           "guides": [os.path.join(gdir, f"guide_{i}.png") for i in range(nviews)], "denoise": denoise,
+           "style": st["id"] if st else None}
     if fbx:
         on_progress(95, "Converting to FBX", "Blender")
         out["fbx"], _, out["fbx_stats"] = gen3d.glb_to_fbx(dst, out_dir, name, size or bake["size"], level=False)
@@ -239,15 +318,16 @@ def main():
     ap.add_argument("--low", action="store_true", help="two extra low views for undersides (chairs, tables)")
     ap.add_argument("--seed", type=int)
     ap.add_argument("--denoise", type=float, help="how far each view may move from the part-colour render (0.7; 0.85 single-material)")
-    ap.add_argument("--depth", type=float, default=0.8, help="depth ControlNet strength")
-    ap.add_argument("--ipadapter", type=float, default=0.6, help="IP-Adapter strength (how much the picture styles every view)")
+    ap.add_argument("--depth", type=float, help="depth ControlNet strength (0.8)")
+    ap.add_argument("--ipadapter", type=float, help="IP-Adapter strength (how much the picture styles every view, 0.6)")
+    ap.add_argument("--style", help="style guide id (ai-3d/styles/<id>.json): " + ", ".join(s["id"] for s in prop_style.list_styles()))
     ap.add_argument("--res", type=int, default=1024, help="diffuse size")
     ap.add_argument("--size", type=float, help="longest dimension in metres for the FBX (default: as modelled)")
     ap.add_argument("--no-fbx", action="store_true")
     a = ap.parse_args()
     out = paint(a.glb, a.picture, a.prompt, a.name, a.out, [s for s in a.lock.split(",") if s], a.low, a.seed,
                 a.ipadapter, a.denoise, a.depth, a.res, a.size, not a.no_fbx,
-                on_progress=lambda pct, phase, detail="": print(f"{pct:5.1f}%  {phase}  {detail}", flush=True))
+                on_progress=lambda pct, phase, detail="": print(f"{pct:5.1f}%  {phase}  {detail}", flush=True), style=a.style)
     print(json.dumps({k: v for k, v in out.items() if k not in ("views", "guides")}, indent=1))
 
 

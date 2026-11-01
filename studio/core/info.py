@@ -30,6 +30,8 @@ def presets_3d():
     out["_paint"] = genpaint.readiness()
     import prop_model
     out["_claude"] = bool(prop_model.claude_cli())
+    import prop_style
+    out["_styles"] = prop_style.list_styles()
     out["_shape_round"] = "Round: crease angle 180° (fully smooth shading), remesh 384, default budget 1500 tris, no dissolve"
     out["_edges"] = {k: v for k, v in gen3d.EDGES.items()}
     return out

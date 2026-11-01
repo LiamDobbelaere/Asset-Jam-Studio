@@ -607,6 +607,16 @@ function pickReference(cb) {
     modal(h('div', { style: { width: '70vw', maxHeight: '75vh', overflow: 'auto' } }, h('h3', { style: { marginBottom: '10px' } }, 'Pick the reference picture'), items.length ? grid : h('div', { class: 'empty' }, 'No reference pictures in the 3D library yet: make one with "1 · Reference image only" above')));
   });
 }
+function styleField() {   // the style guides in ai-3d/styles, listed by /api/presets3d
+  const s = select('style', [['', 'Default look']], '');
+  const hint = h('div', { class: 'hint' });
+  const show = () => { const st = ((state.presets3d && state.presets3d._styles) || []).find(x => x.id === s.value); hint.textContent = st ? st.summary : 'How the picture is drawn, how Claude models and how the paint is finished.'; };
+  const fill = P => { const want = s.value; for (const st of (P && P._styles) || []) if (![...s.options].some(o => o.value === st.id)) s.append(h('option', { value: st.id }, st.label)); s.value = want; show(); };
+  s.addEventListener('change', show);
+  if (state.presets3d) fill(state.presets3d); else api.get('/api/presets3d').then(P => { state.presets3d = P; fill(P); }).catch(() => {});
+  show();
+  return h('label', { class: 'field' }, h('span', {}, 'Style'), s, hint);
+}
 function buildPropForm() {
   const fs = state.forms.prop = state.forms.prop || {};
   const form = h('form', { class: 'card form', id: 'prop-form', onsubmit: e => e.preventDefault() });
@@ -618,11 +628,12 @@ function buildPropForm() {
     warn,
     field('Prompt', h('textarea', { name: 'prompt', placeholder: 'a safety orange and black snowmobile with a windshield and two front skis' }), 'One object, not a scene.'),
     h('div', { class: 'two' }, field('Asset name', text('name', '', { placeholder: 'Snowmobile (from prompt)' })), field('Claude model', select('claude_model', [['opus', 'Opus'], ['sonnet', 'Sonnet'], ['', 'Claude Code default']], 'opus'))),
+    styleField(),
     seedField(),
     uploadBox('prop', 'reference', 'Own reference picture (optional)', { hint: 'Skips drawing one: Claude models from your picture', pick: pickReference }),
     h('details', {}, h('summary', {}, 'Advanced'),
       h('div', { class: 'two' }, field('Check rounds (max)', num('rounds', 6, { step: 1, min: 1, max: 12 }), 'Build + compare rounds Claude may take.'), field('Effort', select('effort', [['', 'default'], ['medium', 'medium'], ['high', 'high'], ['xhigh', 'xhigh']], ''))),
-      h('div', { class: 'two' }, field('IP-Adapter strength', num('ipadapter', 0.6, { step: 0.05, min: 0, max: 1.5 })), field('Denoise', num('denoise', '', { placeholder: '0.7', step: 0.05, min: 0.2, max: 1 }))),
+      h('div', { class: 'two' }, field('IP-Adapter strength', num('ipadapter', '', { placeholder: '0.6', step: 0.05, min: 0, max: 1.5 })), field('Denoise', num('denoise', '', { placeholder: '0.7', step: 0.05, min: 0.2, max: 1 }))),
       h('div', { class: 'two' }, field('Diffuse size', select('resolution', [512, 1024, 2048], 1024)), field('Size (m)', num('size', '', { placeholder: 'real size', step: 0.1, min: 0.01 }))),
       check('fbx', 'Also write the Unity FBX + <Name>Diffuse.png', true), check('raw', 'Raw prompt for the picture: no style hints', false)),
     h('div', { class: 'actions' }, h('button', { class: 'btn primary block', type: 'button', onclick: () => run() }, '▶ Picture → Claude models → paint')),
@@ -652,9 +663,10 @@ function buildPaintForm() {
     field('Other views', text('plain', '', { placeholder: 'plain flat wooden back panel, no drawers' }), 'How every other view looks, for the whole prop: a top view told only "plain cardboard sleeve" paints the lid as cardboard.'),
     h('div', { class: 'two' }, field('Asset name', text('name', '', { placeholder: 'from the GLB' })), field('Lock parts', text('lock', '', { placeholder: 'Snow,Floor' }), 'Material names of plain parts: they keep the shading but one colour, so bleed from a neighbour is removed.')),
     check('low', 'Low views: paint the underside too (chairs, tables). Off for other props: there they invent a second logo', false),
+    styleField(),
     seedField(),
     h('details', {}, h('summary', {}, 'Advanced'),
-      h('div', { class: 'two' }, field('IP-Adapter strength', num('ipadapter', 0.6, { step: 0.05, min: 0, max: 1.5 }), 'How much the picture styles every view.'), field('Denoise', num('denoise', '', { placeholder: '0.7', step: 0.05, min: 0.2, max: 1 }), 'How far each view may move from the render of the part colours: lower keeps the modelled colours, higher adds detail. Default 0.7 (0.85 for a single-material model).')),
+      h('div', { class: 'two' }, field('IP-Adapter strength', num('ipadapter', '', { placeholder: '0.6', step: 0.05, min: 0, max: 1.5 }), 'How much the picture styles every view.'), field('Denoise', num('denoise', '', { placeholder: '0.7', step: 0.05, min: 0.2, max: 1 }), 'How far each view may move from the render of the part colours: lower keeps the modelled colours, higher adds detail. Default 0.7 (0.85 for a single-material model).')),
       h('div', { class: 'two' }, field('Diffuse size', select('resolution', [512, 1024, 2048], 1024)), field('Size (m)', num('size', '', { placeholder: 'as modelled', step: 0.1, min: 0.01 }))),
       check('fbx', 'Also write the Unity FBX + <Name>Diffuse.png', true)),
     h('div', { class: 'actions' }, h('button', { class: 'btn primary block', type: 'button', onclick: () => run() }, '🖌 Paint')),

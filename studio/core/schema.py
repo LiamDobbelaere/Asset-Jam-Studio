@@ -7,6 +7,9 @@ Keep this in step with the flows in flows.py: every parameter a flow reads is li
 import os
 import re
 
+from . import paths   # noqa: F401  (puts ai-3d/scripts on sys.path)
+import prop_style
+
 # --- parameter descriptors ----------------------------------------------------------------------
 
 def P(type, help="", default=None, choices=None, required=False, min=None, max=None, items=None, ui=False):
@@ -31,6 +34,9 @@ def P(type, help="", default=None, choices=None, required=False, min=None, max=N
     return d
 
 
+STYLE = P("str", "Style guide (ai-3d/styles/<id>.json): how the picture is drawn, how Claude models and how the paint "
+               "is finished. " + " ".join(f"{s['id']}: {s['summary']}" for s in prop_style.list_styles())
+          + " Empty: the default look.", default="", choices=[""] + [s["id"] for s in prop_style.list_styles()])
 SEED = P("int", "Same inputs + same seed = same result. Empty = random; the seed used is written back into the job params.")
 NAME = lambda example: P("str", f"Output file name without extension (default: made from the prompt, e.g. {example}). "  # noqa: E731
                                 "A suffix _2, _3 ... is added when the name is taken.")
@@ -294,6 +300,7 @@ KINDS = {
             "prompt": P("str", "ONE object: 'a safety orange and black snowmobile with a windshield and two front skis'. Hard-surface "
                                "props work best (furniture, vehicles, tools, containers, signs); soft organic shapes do not.", required=True),
             "name": NAME("Snowmobile"),
+            "style": STYLE,
             "seed": SEED,
             "reference_upload": P("path", "Your own reference picture (PNG): skips drawing one"),
             "reference_url": P("str", "Or a reference picture as a /files/... URL (a 3D model's 'reference' from the library)"),
@@ -301,9 +308,9 @@ KINDS = {
             "claude_model": P("str", "Claude model for the modelling (a Claude Code alias or model id; empty = the CLI's own default)", default="opus"),
             "effort": P("str", "Claude's reasoning effort (empty: its default)", choices=["", "low", "medium", "high", "xhigh", "max"]),
             "rounds": P("int", "Most build + check rounds Claude may take", default=6, min=1, max=12),
-            "ipadapter": P("float", "Paint: IP-Adapter strength (how much the picture styles every view)", default=0.6, min=0, max=1.5),
-            "denoise": P("float", "Paint: how far each view may move from the render of the part colours (default 0.7)", min=0.2, max=1.0),
-            "depth": P("float", "Paint: depth ControlNet strength", default=0.8, min=0, max=1.5),
+            "ipadapter": P("float", "Paint: IP-Adapter strength (how much the picture styles every view; default 0.6 or the style's)", min=0, max=1.5),
+            "denoise": P("float", "Paint: how far each view may move from the render of the part colours (default 0.7 or the style's)", min=0.2, max=1.0),
+            "depth": P("float", "Paint: depth ControlNet strength (default 0.8 or the style's)", min=0, max=1.5),
             "resolution": P("int", "Diffuse size", default=1024, choices=[512, 1024, 2048]),
             "size": P("float", "Longest dimension in metres for the FBX (default: as modelled, real size)", min=0.01),
             "fbx": P("bool", "Also write the Unity FBX + <Name>Diffuse.png", default=True),
@@ -335,12 +342,13 @@ KINDS = {
             "low": P("bool", "Two extra views from below for props with undersides worth painting (chair stretchers, table "
                              "frames). Leave off otherwise: on a cup they invented a second logo", default=False),
             "name": P("str", "Asset name (default: the GLB's file name). A suffix _2, _3 ... is added when the name is taken."),
+            "style": STYLE,
             "seed": SEED,
-            "ipadapter": P("float", "IP-Adapter strength: how much the picture styles every view", default=0.6, min=0, max=1.5),
+            "ipadapter": P("float", "IP-Adapter strength: how much the picture styles every view (default 0.6 or the style's)", min=0, max=1.5),
             "denoise": P("float", "How far each view may move from the render of the model in its part colours: lower keeps the "
                                   "modelled colours, higher adds more painted detail (default 0.7; 0.85 for a single-material model)",
                          min=0.2, max=1.0),
-            "depth": P("float", "Depth ControlNet strength: how strictly each view follows the model's shape", default=0.8, min=0, max=1.5),
+            "depth": P("float", "Depth ControlNet strength: how strictly each view follows the model's shape (default 0.8 or the style's)", min=0, max=1.5),
             "resolution": P("int", "Diffuse size", default=1024, choices=[512, 1024, 2048]),
             "size": P("float", "Longest dimension in metres for the FBX (default: as modelled)", min=0.01),
             "fbx": P("bool", "Also write the Unity FBX + <Name>Diffuse.png", default=True),

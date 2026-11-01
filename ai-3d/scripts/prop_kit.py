@@ -8,6 +8,8 @@ Conventions that paint.py relies on:
   reference picture shows. The camera fit only tries views from the front half.
 - One material per part, named after the part (Wood, Snow, Lid ...), with roughly the part's colour. The names are
   what paint --lock takes, and the colour is the fallback when the painted colour of a locked part strays.
+- Materials named Decal* are painted marks, not geometry (decal()): the paint guides show them, so every view paints
+  the keys or the label in the same place, and paint_project.py drops their faces before the bake.
 """
 import math
 import os
@@ -128,6 +130,34 @@ def smooth_curve(points, n=24, closed=False):
     return out
 
 
+FACES = {"front": (math.pi / 2, 0, 0), "back": (math.pi / 2, 0, math.pi),"left": (math.pi / 2, 0, -math.pi / 2),
+         "right": (math.pi / 2, 0, math.pi / 2), "top": (0, 0, 0)}
+
+
+def decal(name, size, loc, color, face="front", rot=None, shape="rect", segs=16):
+    """A painted mark on a surface (keys, a button panel, a label, a logo, a drawer outline): a flat rect or disc of
+    size (w, h) centred on loc, which lies ON the surface; it is lifted 1 mm off it. face: front (-Y), back, left (-X),
+    right, top: size is (x, z) on front/back, (y, z) on left/right, (x, y) on top. rot: euler angles instead of face,
+    for slanted surfaces (the mark's normal is its local +Z). color: rgb or a material named Decal*. Decals show in
+    the clay check and the paint guides but are not part of the painted mesh and cost no triangles."""
+    m = color if isinstance(color, bpy.types.Material) else mat("Decal" + name, color)
+    if not m.name.startswith("Decal"):
+        raise ValueError(f"decal material {m.name!r}: name it Decal<Something>")
+    bm = bmesh.new()
+    w, h = size
+    if shape == "disc":
+        vs = [bm.verts.new((w / 2 * math.cos(2 * math.pi * i / segs), h / 2 * math.sin(2 * math.pi * i / segs), 0))
+              for i in range(segs)]
+    else:
+        vs = [bm.verts.new(p) for p in ((-w / 2, -h / 2, 0), (w / 2, -h / 2, 0), (w / 2, h / 2, 0), (-w / 2, h / 2, 0))]
+    bm.faces.new(vs)
+    bmesh.ops.translate(bm, vec=(0, 0, 0.001), verts=bm.verts)
+    o = _obj(name, bm, m)
+    o.rotation_euler = rot if rot is not None else FACES[face]
+    o.location = loc
+    return o
+
+
 def edit(o, fn):
     """Run fn(bm) on an object's mesh (inset, extrude, move verts ...)."""
     bm = bmesh.new()
@@ -159,7 +189,8 @@ def export(name, out_dir, sharp_deg=40):
     bm = bmesh.new()
     bm.from_mesh(o.data)
     bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-5)
-    tris = sum(len(f.verts) - 2 for f in bm.faces)
+    decals = {i for i, m in enumerate(o.data.materials) if m.name.startswith("Decal")}
+    tris = sum(len(f.verts) - 2 for f in bm.faces if f.material_index not in decals)
     bm.to_mesh(o.data)
     bm.free()
     for p in o.data.polygons:
@@ -168,5 +199,7 @@ def export(name, out_dir, sharp_deg=40):
     os.makedirs(out_dir, exist_ok=True)
     path = os.path.join(out_dir, name + ".glb")
     bpy.ops.export_scene.gltf(filepath=path)
-    print(f"RESULT {path} tris={tris} parts={','.join(m.name for m in o.data.materials)}")
+    parts = [m.name for i, m in enumerate(o.data.materials) if i not in decals]
+    print(f"RESULT {path} tris={tris} parts={','.join(parts)}"
+          + (f" decals={','.join(o.data.materials[i].name[5:] for i in sorted(decals))}" if decals else ""))
     return path

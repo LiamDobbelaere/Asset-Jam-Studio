@@ -1,0 +1,21 @@
+{
+  "label": "Inked hand-paint",
+  "summary": "Chunky, simple low-poly props whose detail lives in the texture: flat muted colours, soft airbrushed shading and dark ink lines along the hard edges. Keys, buttons, labels and panel lines are painted, not modelled; soft parts are puffy and rounded. Painted with FLUX.2 klein.",
+  "picture": ", 3D game prop from a stylized indie game, simple low-poly model with slightly chunky proportions and smooth shading, hand-painted texture in muted flat colors with soft airbrushed shading, darker lines painted along the edges and seams, buttons, labels and panel lines painted flat on the surfaces instead of modelled, cartoon style, only this one object and nothing else, centered, full object in view, three-quarter view from slightly above, plain light grey background, no shadows",
+  "brief": "inked.md",
+  "paint": {
+    "painter": "klein",
+    "denoise": 0.75,
+    "denoise_other": 0.6,
+    "guide_light": "flat",
+    "prompt": "flat muted colours with soft airbrushed shading, thin dark painted lines along the edges and around the painted details, clean cartoon game texture, no photo realism",
+    "finish": {
+      "tone": 1.0,
+      "flatten": 0.85,
+      "shade": 0.5,
+      "ink": 2.0,
+      "ink_angle": 40,
+      "ink_dark": 0.55
+    }
+  }
+}

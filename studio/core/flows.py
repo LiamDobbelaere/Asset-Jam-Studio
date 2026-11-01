@@ -896,13 +896,14 @@ def flow_paint(job):
             job.add_intermediate(label, "image", path, url)
 
     out = genpaint.paint(glb, picture, prompt, name, ASSETS, lock, low=bool(p.get("low")), seed=seed,
-                         ipadapter=_float(p.get("ipadapter"), 0.6), denoise=_float(p.get("denoise")), depth=_float(p.get("depth"), 0.8),
+                         ipadapter=_float(p.get("ipadapter")), denoise=_float(p.get("denoise")), depth=_float(p.get("depth")),
                          resolution=_int(p.get("resolution"), 1024), size=_float(p.get("size")),
                          fbx=p.get("fbx", True) is not False, upload=upload_to_comfy, run_api=run_api, log=job.add_log,
                          on_progress=lambda pct, phase, detail="": job.set_progress(pct, phase, detail, force=True),
-                         on_file=on_file, should_cancel=lambda: job.cancel_requested)
+                         on_file=on_file, should_cancel=lambda: job.cancel_requested, style=p.get("style") or None)
     job.meta.update(fit={k: round(out["fit"][k], 3) for k in ("iou", "yaw", "elev", "fov")}, tris=out["bake"]["tris"],
-                    seen=out["bake"]["seen"], denoise=out["denoise"], locked=out["bake"]["locked"], workdir=out["workdir"])
+                    seen=out["bake"]["seen"], denoise=out["denoise"], locked=out["bake"]["locked"], workdir=out["workdir"],
+                    style=out["style"])
     job.outputs["views"] = [{"path": v, "url": file_url(v)} for v in out["views"]]
     job.outputs["diffuse"] = {"path": out["diffuse"], "url": file_url(out["diffuse"])}
     if out.get("fbx"):
@@ -919,8 +920,10 @@ def flow_paint(job):
 def flow_prop(job):
     import paint as genpaint     # ai-3d/scripts
     import prop_model
+    import prop_style
     p = job.params
     prompt = (p.get("prompt") or "").strip()
+    style = prop_style.load(p.get("style") or None)
     seed = _int(p.get("seed"))
     if seed is None:
         seed = random.randint(0, 2**31)
@@ -940,7 +943,10 @@ def flow_prop(job):
     if picture and not os.path.isfile(picture):
         raise ValueError(f"reference picture not found: {picture}")
     if not picture:
-        api, info = gen3d.build_api(prompt, "gameasset", bool(p.get("raw")), seed, image_only=True)
+        if style and style["picture"] and not p.get("raw"):   # the style's picture words replace the preset's
+            api, info = gen3d.build_api(prompt + style["picture"], "gameasset", True, seed, image_only=True)
+        else:
+            api, info = gen3d.build_api(prompt, "gameasset", bool(p.get("raw")), seed, image_only=True)
         hist, runner = run_comfy(job, api, (0, 8))
         for nid, path in history_files(hist, kinds=("images",)):
             if api.get(nid, {}).get("class_type") == "SaveImage" and "reference" in api[nid]["_meta"]["title"].lower():
@@ -967,7 +973,8 @@ def flow_prop(job):
             job.add_intermediate(f"Clay check {d['round']}", "image", d["path"], file_url(d["path"]))
 
     m = prop_model.model_prop(picture, prompt, workdir, name, model=p.get("claude_model", "opus") or None, rounds=rounds,
-                              effort=p.get("effort") or None, on_event=on_event, should_cancel=lambda: job.cancel_requested)
+                              effort=p.get("effort") or None, on_event=on_event, should_cancel=lambda: job.cancel_requested,
+                              style=style and style["id"])
     paint = m["paint"]
     job.meta.update(paint=paint, model_rounds=len(m["sheets"]), model_seconds=m["seconds"], claude_cost_usd=m["cost_usd"],
                     script=m["script"])
@@ -987,13 +994,13 @@ def flow_prop(job):
 
     paint_prompt = " | ".join(s.strip() for s in (paint.get("prompt") or prompt, paint.get("front") or "", paint.get("plain") or ""))
     out = genpaint.paint(m["glb"], picture, paint_prompt, name, ASSETS, paint.get("lock") or [], low=bool(paint.get("low")),
-                         seed=seed, ipadapter=_float(p.get("ipadapter"), 0.6), denoise=_float(p.get("denoise")),
-                         depth=_float(p.get("depth"), 0.8), resolution=_int(p.get("resolution"), 1024),
+                         seed=seed, ipadapter=_float(p.get("ipadapter")), denoise=_float(p.get("denoise")),
+                         depth=_float(p.get("depth")), resolution=_int(p.get("resolution"), 1024), style=style,
                          size=_float(p.get("size")), fbx=p.get("fbx", True) is not False, upload=upload_to_comfy, run_api=run_api,
                          log=job.add_log, on_file=on_file, should_cancel=lambda: job.cancel_requested,
                          on_progress=lambda pct, phase, detail="": job.set_progress(55 + 0.45 * pct, phase, detail, force=True))
     job.meta.update(fit={k: round(out["fit"][k], 3) for k in ("iou", "yaw", "elev", "fov")}, tris=out["bake"]["tris"],
-                    seen=out["bake"]["seen"], denoise=out["denoise"], locked=out["bake"]["locked"])
+                    seen=out["bake"]["seen"], denoise=out["denoise"], locked=out["bake"]["locked"], style=out["style"])
     job.outputs["views"] = [{"path": v, "url": file_url(v)} for v in out["views"]]
     job.outputs["checks"] = [{"path": s, "url": file_url(s)} for s in m["sheets"]]
     job.outputs["script"] = {"path": m["script"], "url": file_url(m["script"])}

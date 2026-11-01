@@ -10,6 +10,7 @@ One line per memory in this folder. Private notes (gitignored) are indexed in `p
 - [Game-asset small parts](game-asset-small-parts.md) — QEM decimation drops castors/feet, not the cascade/remesh; default 3000 tris + 10° dissolve; 1536 and retopo on the raw mesh are dead ends; cache-thrash and freeze pitfalls
 - [Box rebuild geometry](box-rebuild-geometry.md) — --geometry boxes: union of axis-aligned boxes for box-modelled props; rejected, stashed; CoACD/raw-mesh dead ends
 - [Agent modelling exploration](agent-modelling-exploration.md) — Claude writes bpy props from the picture; texturing via StableGen, then part-colour renders
+- [Prop style guides](prop-style-guides.md) — ai-3d/styles: inked style tuned to the user's props; klein img2img painter, flat guides + tone (default paint bakes its light, 1.3-4x darker), decals
 - [World texture generation](world-texture-generation.md) — texture.bat: native latent-roll tiling (ai3d_seamless nodes) default, cross-fade for flat walls, LoRA opt-in (--lora 0.8 for grass/tiles only)
 - [Sprite generation setup](sprite-generation-setup.md) — sprite.bat: FLUX.2 klein 4B fp8 edit/pose/t2i + BiRefNet cut-out; why not Qwen-Image-Edit / FLUX 3 Klein; colour drift on distilled
 - [Voice generation setup](voice-generation-setup.md) — ai-voc: Qwen3-TTS 1.7B-Base fp16 zero-shot cloning + LoRA fine-tune; why not Chatterbox/F5/Fish; 8 GB gotchas

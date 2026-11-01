@@ -3,7 +3,9 @@ folder with prop_brief.md as its brief. Claude writes <Name>.py with prop_kit.py
 looks at the clay views next to the picture and revises, then answers with the paint settings (prompt, front,
 plain, lock, low). Claude may only write inside that folder, read files, and run that one check command.
 
-    python prop_model.py reference.png "what the object is" <workdir> <Name> [--model sonnet]
+    python prop_model.py reference.png "what the object is" <workdir> <Name> [--model sonnet] [--style inked]
+
+--style adds a style guide's modelling rules (ai-3d/styles/<id>.md via prop_style.py) after the brief.
 
 Uses the Claude Code login of this machine (`claude` on PATH or ~/.local/bin/claude.exe); CLAUDE_CLI overrides.
 """
@@ -14,6 +16,8 @@ import shutil
 import subprocess
 import sys
 import time
+
+import prop_style
 
 SCRIPTS = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(SCRIPTS)
@@ -38,7 +42,7 @@ def _fwd(p):
 
 
 def model_prop(picture, description, workdir, name, model=None, rounds=6, effort=None,
-               on_event=lambda kind, **d: None, should_cancel=lambda: False, timeout=1800):
+               on_event=lambda kind, **d: None, should_cancel=lambda: False, timeout=1800, style=None):
     """Returns {glb, script, sheets: [check.png per round], paint: {prompt, front, plain, lock, low, notes}, cost_usd}.
     on_event(kind, ...): "text" (text=), "write" (path=), "check" (round=), "sheet" (round=, path=), "done"."""
     cli = claude_cli()
@@ -49,8 +53,12 @@ def model_prop(picture, description, workdir, name, model=None, rounds=6, effort
     # the Bash tool is Git Bash on Windows: forward slashes, no spaces in these paths
     check = f"{_fwd(PY)} {_fwd(os.path.join(SCRIPTS, 'prop_check.py'))}"
     with open(os.path.join(SCRIPTS, "prop_brief.md"), encoding="utf-8") as f:
-        brief = (f.read().replace("{SCRIPTS}", os.path.abspath(SCRIPTS)).replace("{CHECK}", check)
-                 .replace("{NAME}", name).replace("{ROUNDS}", str(rounds)))
+        brief = f.read()
+    st = prop_style.load(style)
+    if st and st["brief"]:
+        brief += "\n\n" + st["brief"]
+    brief = (brief.replace("{SCRIPTS}", os.path.abspath(SCRIPTS)).replace("{CHECK}", check)
+             .replace("{NAME}", name).replace("{ROUNDS}", str(rounds)))
     task = (f"Model this prop: {description}\nThe reference picture is reference.png in the current folder. "
             f"Write {name}.py here and follow the loop in your instructions.")
     cmd = [cli, "-p", task, "--output-format", "stream-json", "--verbose", "--append-system-prompt", brief,
@@ -138,7 +146,8 @@ if __name__ == "__main__":
     ap.add_argument("name")
     ap.add_argument("--model")
     ap.add_argument("--rounds", type=int, default=6)
+    ap.add_argument("--style", help="style guide id (ai-3d/styles/<id>.json)")
     a = ap.parse_args()
     out = model_prop(a.picture, a.description, a.workdir, a.name, a.model, a.rounds,
-                     on_event=lambda kind, **d: print(f"[{kind}]", json.dumps(d)[:300], flush=True))
+                     on_event=lambda kind, **d: print(f"[{kind}]", json.dumps(d)[:300], flush=True), style=a.style)
     print(json.dumps(out, indent=1))

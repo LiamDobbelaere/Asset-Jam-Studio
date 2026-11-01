@@ -1,12 +1,13 @@
 """Runs inside Blender (headless): renders the guides paint.py generates the views from.
 
-    blender -b --python paint_guides.py -- model.glb camera.json outdir [low]
+    blender -b --python paint_guides.py -- model.glb camera.json outdir [low] [flat]
 
 For each camera, guide_<i>.png (the model in its part colours, studio light + cavity, on light grey) and depth_<i>.png
 (16-bit, 1 = nearest, 0.1 = farthest, black background), plus cams.json (camera matrices, field of view, depth range,
 the prompt word for the view). Cameras: the reference picture's own, from the silhouette fit (camera.json, glTF frame),
 then a ring at eye level and one from above, 30 degree FOV, all aimed at the model's centre; "low" adds two views from
-below for props with undersides. Prints "GUIDES <views> <parts>".
+below for props with undersides; "flat" lights the guides flat (the part colours as they are, plus cavity), so the
+views start from the true colours instead of shaded ones that end up baked into the diffuse. Prints "GUIDES <views> <parts>".
 """
 import json
 import math
@@ -18,7 +19,8 @@ from mathutils import Vector
 
 argv = sys.argv[sys.argv.index("--") + 1:]
 glb, camf, out = argv[:3]
-LOW = len(argv) > 3 and argv[3] == "low"
+LOW = "low" in argv[3:]
+FLAT = "flat" in argv[3:]
 RES = 1024
 RING = [(60, 10, "side view"), (120, 15, "back side view"), (180, 15, "back view"), (240, 15, "back side view"),
         (300, 10, "side view"), (30, 60, "top view")]
@@ -62,7 +64,7 @@ def aim(pos):
 
 meta = []
 sc.render.engine = "BLENDER_WORKBENCH"
-sc.display.shading.light = "STUDIO"
+sc.display.shading.light = "FLAT" if FLAT else "STUDIO"
 sc.display.shading.color_type = "MATERIAL"
 sc.display.shading.show_cavity = True
 sc.world.color = (0.85, 0.85, 0.87)

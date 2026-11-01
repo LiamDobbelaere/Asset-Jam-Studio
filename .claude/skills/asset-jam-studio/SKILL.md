@@ -120,6 +120,9 @@ runs a headless Claude Code session that models it with prop_kit (clay checks ag
 `script` and `checks[]`. Give `--reference_url` (a library reference) to skip the picture. Check the result like a
 `model3d` one (Read `checks[-1]` and a few `views`); if the shape is wrong, edit `outputs.script.path` (see **paint**
 step 2), rebuild it and resubmit it as a `paint` job with the same picture instead of re-running `prop`.
+`--style inked` (style guides in `<repo>\ai-3d\styles\`, `schema prop` lists them) gives a whole set one look:
+chunky low-poly props, details painted instead of modelled, flat muted colours with ink lines. Use the same style for
+every prop of a game, and pass it to `paint` jobs too when you repaint one.
 
 **paint** (a prop you model yourself, then paint). For props that should look hand-made (furniture, tools,
 containers, signs, camping gear): intentional low-poly shapes at 300-1500 tris instead of a decimated scan. Soft

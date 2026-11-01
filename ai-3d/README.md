@@ -54,6 +54,8 @@ scripts/prop_model.py         runs Claude Code headless to model a prop from its
 scripts/prop_brief.md         Claude's brief for that: conventions, the build + check loop, the paint answer
 scripts/prop_check.py         builds a prop_kit script and writes check.png (picture + four clay views)
 scripts/prop_views.py         Blender: the four clay views for prop_check.py
+scripts/prop_style.py         loads the style guides in styles/ (picture words, modelling rules, paint settings)
+styles/<id>.json + <id>.md    a style guide; inked = chunky hand-painted props with ink lines
 scripts/build_texture_workflow.py   regenerates both text_to_texture workflow files from one graph
 scripts/build_sprite_workflow.py    same for the sprite_edit workflow files (uses scripts/ui_export.py)
 workflows/text_to_3d_gameasset.json        UI workflow, low-poly game-asset preset (in ComfyUI's sidebar)
@@ -227,6 +229,47 @@ four clay views) for a few rounds, then answers with the paint prompts, the part
 needed; the paint step above uses them. Claude may only write inside that folder, read files and run that one check
 command. The snowmobile prompt took Claude 4 rounds in about 2 minutes (~$0.50 of usage on Opus). The model
 defaults to `opus`; the CLI's own default can be one your plan has no credits for.
+
+### Style guides (`styles/`)
+
+A style guide makes the modelled-prop flow aim at one look across a whole set of props. It is a JSON file in
+`styles/` (`<id>.json`, read by `scripts/prop_style.py`) plus the modelling rules Claude gets on top of
+`prop_brief.md` (`<id>.md`), and it sets all three stages:
+
+- `picture`: the style words after the prompt for the Z-Image reference picture (instead of the game-asset preset's).
+- `brief`: the rules file: triangle budgets, which details to model and which to paint, proportions, colours.
+- `paint`: the painter (`sdxl` or `klein`), its denoise (`denoise_other` for every view but the picture's),
+  `guide_light`, prompt words for every view, and the `finish` that `paint_project.py` applies to the bake.
+
+The studio's prop and paint forms have a Style menu; the API takes `style` on `prop` and `paint` jobs; the CLIs take
+`--style <id>` (`paint.bat`, `scripts/prop_model.py`). No style is the pipeline described above.
+
+**`inked`** (Inked hand-paint) was tuned against a set of hand-made low-poly game props: chunky, simple shapes at
+12-250 triangles for small props and up to ~1800 for big soft furniture, detail in the texture instead of the mesh,
+flat muted colours, soft airbrushed shading and dark ink lines along the hard edges. What it changes, and why:
+
+- Modelling: keys, buttons, screens, labels, vents and drawer lines are painted, not modelled; hard objects keep
+  sharp edges (they get the ink), soft parts are puffy and rounded. Claude places the painted details as **decals**
+  (`prop_kit.decal`: flat coloured marks on a surface; materials named `Decal*`): they are in the guides, so every
+  view paints the keys or the label in the same place, and `paint_project.py` drops them before the bake, so they
+  cost no triangles. Repeating details are one decal per key or slot: with one big rectangle for "the keys", the
+  keys painted as a flat block. A keyboard came out at 52 triangles with every key painted, a vending machine at 220.
+- Guides with flat light (`guide_light: flat`): with the default studio light, every view started from shaded
+  colours, the shading was baked into the diffuse and lit again in the engine; the test props' diffuses came out
+  1.3-4x darker than the hand-made ones (an office chair's median 38 against 181).
+- Painting with FLUX.2 klein 4B (the sprite flow's model) as img2img from the guide, the picture as image 2 for
+  its own view only. RealVisXL kept painting glossy metal, realistic cans and leather grain whatever the prompt;
+  klein paints flat, outlined colours. klein has no depth ControlNet, so the denoise holds the layout: 0.75 for the
+  picture's view (silhouette overlap with the guide 0.95-0.99), 0.6 for the others; at 0.75 they painted a vending
+  machine's window and buttons on its plain back, at 0.85 a back view turned into a second front. As a plain
+  edit (no img2img) klein changed the camera of every view (overlap 0.41-0.93), which projection cannot use.
+- Finish (`paint_project.py`): `tone` scales each part's painted brightness back to its modelled colour, `flatten`
+  pulls small colour differences (view-to-view shading, photo texture) to the part's median and keeps big ones
+  (labels, keys), `shade` adds soft painted shading from the baked AO and the height, `ink` draws dark lines
+  (`ink` texels wide on each side, `ink_dark` x the local colour) along edges sharper than `ink_angle` and around
+  the decals.
+
+To make another style, copy `inked.json` and `inked.md`, change the words and numbers, and pick it by its file name.
 
 Prompt tips: describe one object, not a scene. Each preset appends its own style hints (the
 game-asset preset asks for a smooth, rounded low-poly prop with clean hand-painted colours on a plain background)

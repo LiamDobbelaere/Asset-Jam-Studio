@@ -57,14 +57,15 @@ against). The short version:
 | `music` | `caption` | `name`, `duration`, `loop`, `crossfade`, `takes`, `seed`, `format wav\|ogg\|flac`, `lyrics`, `instrumental`, `language`, `bpm`, `keyscale`, `timesignature`, `think`, `lm`, `steps`, `shift`, `lm_temperature`, `reference_upload` |
 | `sfx` | `prompt` | `name`, `duration` (0.5-30), `takes`, `seed`, `format wav\|ogg\|flac`, `loop`, `crossfade`, `negative`, `trim`, `normalize`, `peak_db`, `highpass`, `steps`, `cfg`, `shift` |
 | `video` | `shots[]` | `name`, `width`, `height`, `fps`, `transition`, `transition_kind`, `mode full\|keyframes\|assemble`, `only[]`, `audio_upload`, `negative`, `crf` (shot fields: see the schema or `ai-vid/README.md`) |
-| `prop` | `prompt` | `name`, `seed`, `reference_upload` or `reference_url` (skip drawing), `raw`, `claude_model` (default `opus`), `effort`, `rounds`, `ipadapter`, `denoise`, `depth`, `resolution`, `size`, `fbx` |
-| `paint` | `prompt`, `model_url` or `model_upload`, `picture_url` or `picture_upload` | `front`, `plain`, `lock`, `low`, `name`, `seed`, `ipadapter`, `denoise`, `depth`, `resolution`, `size`, `fbx` |
+| `prop` | `prompt` | `name`, `style`, `seed`, `reference_upload` or `reference_url` (skip drawing), `raw`, `claude_model` (default `opus`), `effort`, `rounds`, `ipadapter`, `denoise`, `depth`, `resolution`, `size`, `fbx` |
+| `paint` | `prompt`, `model_url` or `model_upload`, `picture_url` or `picture_upload` | `front`, `plain`, `lock`, `low`, `name`, `style`, `seed`, `ipadapter`, `denoise`, `depth`, `resolution`, `size`, `fbx` |
 | `anim` | `source_url` or `mesh_upload` (rig); `clips[]` (anim) | `stage rig\|anim\|full`, `name`, `height`, `no_fingers`, `keep_pose`, `seconds`, `seed`, `steps`, `inplace` |
 
 Outputs by kind (`job.outputs`):
 
 - `model3d`: `glb`, `fbx`, `diffuse_fbx`, `normal_fbx`, `diffuse`, `normal`, `reference` → `{path, url}`
 - `paint`: `glb`, `fbx`, `diffuse`, `reference` → `{path, url}`, `views: [{path, url}]`
+- `style` (`prop`, `paint`): a style guide id from `ai-3d/styles/` (`inked`: chunky hand-painted props with ink lines, painted with FLUX.2 klein); `GET /api/presets3d` lists them under `_styles`. Empty: the default look
 - `prop`: as `paint`, plus `script` (Claude's Blender script) and `checks: [{path, url}]` (clay check per round); `meta.paint` holds Claude's paint settings and notes
 - `texture`: `texture`, `preview2x2`; `sprite`: `sprite`, `raw`
 - `voice`, `music`, `sfx`: `files: [{path, url, seed, duration, meta?}]` (one per take)
