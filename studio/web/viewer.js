@@ -5,9 +5,14 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
+// view toggles shared by the page's viewers, so they survive a re-render of the card and carry over to the next model
+// opened; viewers made with { shared: false } (the library thumbnails) neither read nor change them
+const view = { wire: false, clay: false };
+
 export class Viewer {
-  constructor(container) {
+  constructor(container, { shared = true } = {}) {
     this.el = container;
+    this.shared = shared;
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -25,7 +30,9 @@ export class Viewer {
     this.grid = new THREE.GridHelper(2, 20, 0x3a4060, 0x2a2f42);
     this.scene.add(this.grid);
     this.model = null;
-    this.wire = false;
+    this.wire = shared && view.wire;
+    this.clay = shared && view.clay;   // one plain lit material on every mesh, to judge the shape without its textures
+    this.clayMat = new THREE.MeshStandardMaterial({ color: 0xe6e6e6, roughness: 0.8, metalness: 0, side: THREE.DoubleSide });
     this.alive = true;
     this.mixer = null; this.clips = []; this.action = null; this.clock = new THREE.Clock();
     this.skeleton = null; this.showBones = false;
@@ -34,6 +41,7 @@ export class Viewer {
     container.append(this.tools, this.info);
     const mk = (label, fn) => { const b = document.createElement('button'); b.className = 'btn xs'; b.textContent = label; b.onclick = fn; this.tools.appendChild(b); return b; };
     mk('Wireframe', () => this.setWire(!this.wire));
+    mk('Clay', () => this.setClay(!this.clay)).title = 'Everything in one plain colour, still lit: the shape without its textures';
     this.bonesBtn = mk('Bones', () => this.setBones(!this.showBones)); this.bonesBtn.style.display = 'none';
     mk('Reset view', () => this.fit());
     this._ro = new ResizeObserver(() => this.resize());
@@ -63,7 +71,8 @@ export class Viewer {
       if (o.isMesh) {
         const g = o.geometry; verts += g.attributes.position.count;
         tris += g.index ? g.index.count / 3 : g.attributes.position.count / 3;
-        o.userData.mats = Array.isArray(o.material) ? o.material : [o.material];
+        o.userData.multi = Array.isArray(o.material);
+        o.userData.mats = o.userData.multi ? o.material : [o.material];
         for (const m of o.userData.mats) { m.side = THREE.DoubleSide; }
         if (o.isSkinnedMesh) { skinned = true; o.frustumCulled = false; }
       }
@@ -75,6 +84,7 @@ export class Viewer {
     this.fit();
     this.info.textContent = `${Math.round(tris).toLocaleString()} tris · ${verts.toLocaleString()} verts` + (this.clips.length ? ` · ${this.clips.length} clip${this.clips.length > 1 ? 's' : ''}` : '');
     this.setWire(this.wire);
+    this.setClay(this.clay);
     return { tris: Math.round(tris), verts, clips: this.clips.map(c => ({ name: c.name, duration: c.duration })) };
   }
   playClip(name) {
@@ -113,13 +123,25 @@ export class Viewer {
   }
   setWire(on) {
     this.wire = on;
+    if (this.shared) view.wire = on;
+    this.clayMat.wireframe = on;
     if (!this.model) return;
     this.model.traverse(o => { if (o.isMesh) for (const m of o.userData.mats || []) m.wireframe = on; });
+  }
+  setClay(on) {
+    this.clay = on;
+    if (this.shared) view.clay = on;
+    if (!this.model) return;
+    this.model.traverse(o => {
+      if (!o.isMesh || !o.userData.mats) return;
+      const mats = o.userData.mats;
+      o.material = on ? (o.userData.multi ? mats.map(() => this.clayMat) : this.clayMat) : (o.userData.multi ? mats : mats[0]);
+    });
   }
   clear() {
     this.stopClip(); this.mixer = null; this.clips = [];
     if (this.skeleton) { this.scene.remove(this.skeleton); this.skeleton.dispose?.(); this.skeleton = null; this.bonesBtn.style.display = 'none'; }
     if (this.model) { this.scene.remove(this.model); this.model.traverse(o => { if (o.isMesh) { o.geometry.dispose(); } }); this.model = null; }
   }
-  dispose() { this.alive = false; this._ro.disconnect(); this.clear(); this.renderer.dispose(); this.el.innerHTML = ''; }
+  dispose() { this.alive = false; this._ro.disconnect(); this.clear(); this.clayMat.dispose(); this.renderer.dispose(); this.el.innerHTML = ''; }
 }

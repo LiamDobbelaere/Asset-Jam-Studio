@@ -484,7 +484,7 @@ async function runThumbs() {
   document.body.append(box);
   try {
     if (!viewerMod) viewerMod = await import('/viewer.js');
-    const v = new viewerMod.Viewer(box);
+    const v = new viewerMod.Viewer(box, { shared: false });   // thumbnails ignore the Clay / Wireframe toggles
     await v.load(it.glb);
     v.fit();
     const dataUrl = v.snapshot(320);
