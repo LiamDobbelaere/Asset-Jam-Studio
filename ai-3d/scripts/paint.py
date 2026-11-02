@@ -99,7 +99,18 @@ def view_api(guide, depth, picture, text, seed, prefix, denoise=0.7, depth_stren
     }
 
 
-def klein_view_api(guide, picture, text, seed, prefix, denoise=0.75, steps=8):
+def _klein_lora(api, lora, guider="44"):
+    """Put a LoRA (ComfyUI/models/loras file name, or {"file": ..., "strength": ...}) between the klein model and the
+    guider, e.g. one trained on a style's own props (style_lora_data.py)."""
+    if not lora:
+        return
+    lora = {"file": lora} if isinstance(lora, str) else lora
+    api["80"] = {"class_type": "LoraLoaderModelOnly", "_meta": {"title": "Style LoRA"},
+                 "inputs": {"lora_name": lora["file"], "strength_model": float(lora.get("strength", 1.0)), "model": ["1", 0]}}
+    api[guider]["inputs"]["model"] = ["80", 0]
+
+
+def klein_view_api(guide, picture, text, seed, prefix, denoise=0.75, steps=8, lora=None):
     """ComfyUI prompt: one view repainted by FLUX.2 klein 4B (the sprite flow's edit workflow) as img2img: the guide is
     image 1 and the starting latent, the picture (or None) image 2 for the style. The distilled model's 8-step
     schedule is cut to the last `denoise` part, so the guide's layout stays put."""
@@ -119,7 +130,43 @@ def klein_view_api(guide, picture, text, seed, prefix, denoise=0.75, steps=8):
                  "inputs": {"sigmas": ["41", 0], "denoise": denoise}}
     api["45"]["inputs"].update(latent_image=["13", 0], sigmas=["70", 1])
     api["47"]["inputs"]["filename_prefix"] = prefix
+    _klein_lora(api, lora)
     return gen3d.prune_to(api, ["47"])
+
+
+def klein_picture_api(refs, text, seed, prefix, size=1024, steps=4, lora=None):
+    """ComfyUI prompt: a new picture drawn by FLUX.2 klein 4B from one or two reference pictures (uploaded names, the
+    style's own props) as images 1 and 2, on an empty size x size canvas: a new object in their style."""
+    api = json.load(open(os.path.join(ROOT, "workflows", "sprite_edit_api.json"), encoding="utf-8"))
+    api["1"]["inputs"]["unet_name"] = KLEIN["unet"][1]
+    api["5"]["inputs"]["text"] = text
+    api["10"]["inputs"]["image"] = refs[0]
+    api["43"]["inputs"]["noise_seed"] = seed
+    api["40"]["inputs"].update(width=size, height=size)
+    api["41"]["inputs"].update(steps=steps, width=size, height=size)
+    if len(refs) > 1:
+        api["20"]["inputs"]["image"] = refs[1]
+        api["44"]["inputs"].update(positive=["23", 0], negative=["24", 0], cfg=1.0)
+    else:
+        api["44"]["inputs"].update(positive=["14", 0], negative=["15", 0], cfg=1.0)
+    api["47"]["inputs"]["filename_prefix"] = prefix
+    _klein_lora(api, lora)
+    return gen3d.prune_to(api, ["47"])
+
+
+def klein_t2i_api(text, seed, prefix, size=1024, steps=4, lora=None):
+    """ComfyUI prompt: a picture drawn by FLUX.2 klein 4B from text alone (the sprite workflow's text branch), with an
+    optional LoRA, e.g. one trained on a style's own props (style_lora_data.py --picture)."""
+    api = json.load(open(os.path.join(ROOT, "workflows", "sprite_edit_api.json"), encoding="utf-8"))
+    api["1"]["inputs"]["unet_name"] = KLEIN["unet"][1]
+    api["5"]["inputs"]["text"] = text
+    api["43"]["inputs"]["noise_seed"] = seed
+    api["60"]["inputs"].update(width=size, height=size)
+    api["61"]["inputs"].update(steps=steps, width=size, height=size)
+    api["62"]["inputs"].update(negative=["6", 0], cfg=1.0)
+    api["65"]["inputs"]["filename_prefix"] = prefix
+    _klein_lora(api, lora, guider="62")
+    return gen3d.prune_to(api, ["65"])
 
 
 def _cli_upload(path, name):
@@ -177,13 +224,15 @@ def _blender(args, what):
 def paint(glb, picture, prompt, name=None, out_dir=None, lock=(), low=False, seed=None, ipadapter=None, denoise=None,
           depth=None, resolution=1024, size=None, fbx=True, upload=_cli_upload, run_api=_cli_run, log=print,
           on_progress=lambda pct, phase, detail="": None, on_file=lambda label, path: None, should_cancel=lambda: False,
-          style=None):
+          style=None, refs=()):
     """Paint glb from picture; returns a dict with glb, diffuse, fbx (or None), views, guides, workdir, fit, bake.
     prompt: "shared | front-only details | plain wording for the other views"; lock: material names of plain parts.
     denoise: how far each view may move away from the guide (default 0.7, 0.85 for a model with a single material,
     whose guide is just grey). upload(path, name) -> ComfyUI input name, run_api(api) -> saved image paths: the studio
     passes its own; on_file(label, path) reports the mask, the guides, each painted view and the diffuse.
-    style: a style guide id (prop_style.py) or None; ipadapter / denoise / depth left None take its values."""
+    style: a style guide id (prop_style.py) or None; ipadapter / denoise / depth left None take its values.
+    refs: pictures of the style's own props (prop_refs.front_render) for a klein style with "ref_views": "all": the
+    first is image 2 of every view, "paint it like this", in place of the picture."""
     st = prop_style.load(style) if isinstance(style, str) or style is None else style
     sp = st["paint"] if st else {}
     painter = sp.get("painter", "sdxl")
@@ -211,7 +260,9 @@ def paint(glb, picture, prompt, name=None, out_dir=None, lock=(), low=False, see
     depth = sp.get("depth", 0.8) if depth is None else depth
     denoise = sp.get("denoise") if denoise is None else denoise
     negative = NEGATIVE + (", " + sp["negative"] if sp.get("negative") else "")
-    finish = sp.get("finish") or {}
+    finish = dict(sp.get("finish") or {})
+    if sp.get("scale"):   # the style's unit scale (its props are modelled at real size), applied after the bake
+        finish["scale"] = sp["scale"]
 
     def check_cancel():
         if should_cancel():
@@ -220,6 +271,7 @@ def paint(glb, picture, prompt, name=None, out_dir=None, lock=(), low=False, see
     on_progress(2, "Camera fit", "background mask of the picture (BiRefNet)")
     tag = uuid.uuid4().hex[:6]
     pic_name = upload(picture, f"paint_{name}_{tag}.png")
+    ref_name = upload(refs[0], f"paint_{name}_{tag}_ref.png") if refs and painter == "klein" and sp.get("ref_views") == "all" else None
     masks = run_api(mask_api(pic_name, f"paint/{os.path.basename(work)}/mask"))
     if not masks:
         raise RuntimeError("ComfyUI returned no mask for the picture")
@@ -257,8 +309,13 @@ def paint(glb, picture, prompt, name=None, out_dir=None, lock=(), low=False, see
         prefix = f"paint/{os.path.basename(work)}/view{i}"
         if painter == "klein":
             # an instruction; the picture only for its own view: with it on the back view, klein painted the
-            # vending machine's window and buttons there too
-            if i == 0:
+            # vending machine's window and buttons there too. A style reference (another prop of the style) is image 2
+            # of every view instead: it carries the look, not this object's details
+            if ref_name:
+                text = (f"Repaint image 1 as a finished hand-painted 3D game prop in exactly the art style of image 2 (the "
+                        f"same painting, colours, shading and outlines; image 2 is a different object): {shared}, seen in a "
+                        f"{c['what']}{', ' + detail if detail else ''}. Paint only the details image 1 shows. ")
+            elif i == 0:
                 text = (f"Repaint image 1 as a finished hand-painted 3D game prop in the art style of image 2: {shared}, "
                         f"seen in a {c['what']}{', ' + detail if detail else ''}. ")
             else:
@@ -267,8 +324,8 @@ def paint(glb, picture, prompt, name=None, out_dir=None, lock=(), low=False, see
                         "that is plain in image 1 plain: no windows, displays, labels, screens or buttons that are not in image 1. ")
             text += ("Exactly the same shape, outline, camera angle, framing and part colours as image 1. "
                      + (sp["prompt"] + ", " if sp.get("prompt") else "") + "plain light grey background")
-            files = run_api(klein_view_api(g, pic_name if i == 0 else None, text, seed + i, prefix,
-                                           denoise if i == 0 else sp.get("denoise_other", denoise)))
+            files = run_api(klein_view_api(g, ref_name or (pic_name if i == 0 else None), text, seed + i, prefix,
+                                           denoise if i == 0 else sp.get("denoise_other", denoise), lora=sp.get("lora")))
         else:
             text = f"{c['what']}{', ' + detail if detail else ''}, {shared}, {sp['prompt'] + ', ' if sp.get('prompt') else ''}plain light grey background"
             d = upload(os.path.join(gdir, f"depth_{i}.png"), f"paint_{name}_{tag}_d{i}.png")

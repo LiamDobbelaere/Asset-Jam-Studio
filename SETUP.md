@@ -103,7 +103,31 @@ bf16 there and the patched code path is not taken). To trade the
 headroom for speed or quality, ask your LLM to adapt the module you care about to your GPU; each module's
 README explains which choices were made for 8 GB and what was rejected because it needed more VRAM.
 
-## 7. Using it from Claude Code
+## 7. Optional: a local LoRA trainer for private styles
+
+Only needed to train a style LoRA on your own props (see "A style from your own props" in `ai-3d/README.md`).
+Everything goes in `ai-3d\train\` (gitignored).
+
+```bash
+cd ai-3d/train
+git clone --depth 1 https://github.com/kohya-ss/musubi-tuner.git
+cd musubi-tuner
+uv venv --python 3.12 .venv
+uv pip install --python .venv/Scripts/python.exe "torch==2.14.1" torchvision --index-url https://download.pytorch.org/whl/cu130
+uv pip install --python .venv/Scripts/python.exe -e .
+```
+
+Weights (Apache-2.0, not gated): `flux-2-klein-base-4b.safetensors` (7.75 GB) and the `text_encoder/` folder
+(Qwen3 4B, 8 GB) from `black-forest-labs/FLUX.2-klein-base-4B` into `ai-3d\train\models\`. The VAE is ComfyUI's
+`flux2-vae.safetensors`. ComfyUI's `qwen_3_4b_fp8_mixed` encoder does not load in musubi-tuner (packed fp8
+layout); the plain one from the klein repo does.
+
+Measured on an RTX 2080 8 GB: `--fp8_base --fp8_scaled --blocks_to_swap 13 --gradient_checkpointing`, 512 px,
+rank 16, 8-bit AdamW. `--mixed_precision fp16` fits in 4.6 GB at 4 s/step but the loss is NaN from the first step;
+`bf16` (emulated on Turing) uses 6.8 GB at 13 s/step, about 5.5 hours for 1500 steps. Caching 560 pairs took 3 min
+(latents) and 9 min (text). The LoRA (kohya key format) loads in ComfyUI's `LoraLoaderModelOnly` without missing keys.
+
+## 8. Using it from Claude Code
 
 `.claude/skills/asset-jam-studio/` teaches Claude Code to queue jobs through `studio\studio_cli.py`. It works in
 sessions opened in this folder; copy it to `%USERPROFILE%\.claude\skills\` to use it from other projects, and

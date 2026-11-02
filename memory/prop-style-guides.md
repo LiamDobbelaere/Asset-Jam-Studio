@@ -38,6 +38,18 @@ pedal bin, filing cabinet, microwave, backpack, bookshelf):
   ink 2 px, ink_dark 0.55 (3 px / 0.4 drew every edge too heavily: the user's vending machine, box and couch have
   no edge lines). UV islands are many small smart-project islands, unlike the user's hand-laid ones.
 
+- 2026-11-01, private styles from the user's own .blend (style_refs.py, style_index.py, prop_refs.py, prop_chain.py,
+  style_eval.py, style_lora_data.py): showing Claude its most similar reference props cut triangles (box 88 -> 24)
+  and the held-out probe went 0.88 -> 0.68. Drawing the picture from refs alone made klein copy the reference
+  object; "restyle" (Z-Image, then klein in the ref's style) keeps the object but still leaks distinctive parts.
+  Finish stats (saturation, flatness) barely move the CLIP probe. Game-specific numbers: [[house-style-work]] (private).
+- 2026-11-02, local paint LoRA (musubi-tuner, klein base 4B, RTX 2080): fp16 gives NaN loss, bf16 (emulated) works
+  at 13 s/step, 6.8 GB. A guide -> painted-prop edit LoRA brought texture brightness/flatness to the originals'
+  but did not move the CLIP probe: the paint step is no longer the bottleneck; design (the picture) is.
+- 2026-11-02, a text-to-image picture LoRA (klein, the props' three-quarter renders) moved the probe 0.68 -> 0.62-0.64:
+  the biggest single gain after the reference props. Its pictures are as dark as the shaded renders it learned from,
+  so Claude picks dark part colours; the finish "value" (target median brightness) fixes the textures.
+
 **Why:** the user wants generated props that sit next to their own; the texture look was the biggest gap, then
 over-detailed geometry.
 

@@ -5,7 +5,8 @@ plain, lock, low). Claude may only write inside that folder, read files, and run
 
     python prop_model.py reference.png "what the object is" <workdir> <Name> [--model sonnet] [--style inked]
 
---style adds a style guide's modelling rules (ai-3d/styles/<id>.md via prop_style.py) after the brief.
+--style adds a style guide's modelling rules (ai-3d/styles/<id>.md via prop_style.py) after the brief. With a style
+that has a reference library, --refs Name,Name stages those props (prop_refs.py) in <workdir>/refs for Claude to study.
 
 Uses the Claude Code login of this machine (`claude` on PATH or ~/.local/bin/claude.exe); CLAUDE_CLI overrides.
 """
@@ -42,9 +43,10 @@ def _fwd(p):
 
 
 def model_prop(picture, description, workdir, name, model=None, rounds=6, effort=None,
-               on_event=lambda kind, **d: None, should_cancel=lambda: False, timeout=1800, style=None):
+               on_event=lambda kind, **d: None, should_cancel=lambda: False, timeout=1800, style=None, refs=()):
     """Returns {glb, script, sheets: [check.png per round], paint: {prompt, front, plain, lock, low, notes}, cost_usd}.
-    on_event(kind, ...): "text" (text=), "write" (path=), "check" (round=), "sheet" (round=, path=), "done"."""
+    on_event(kind, ...): "text" (text=), "write" (path=), "check" (round=), "sheet" (round=, path=), "done".
+    refs: names of the style's reference props to show Claude (staged in <workdir>/refs by prop_refs.stage)."""
     cli = claude_cli()
     if not cli:
         raise RuntimeError("Claude Code CLI not found: install it (claude.ai/code) and log in, or set CLAUDE_CLI")
@@ -61,6 +63,12 @@ def model_prop(picture, description, workdir, name, model=None, rounds=6, effort
              .replace("{NAME}", name).replace("{ROUNDS}", str(rounds)))
     task = (f"Model this prop: {description}\nThe reference picture is reference.png in the current folder. "
             f"Write {name}.py here and follow the loop in your instructions.")
+    if refs:
+        import prop_refs
+        staged = prop_refs.stage(st, refs, workdir)
+        if staged:
+            task += (" Before you start, read refs/refs.md and every sheet it lists: they are the artist's own props most "
+                     "like this one. Build yours the way they built theirs.")
     cmd = [cli, "-p", task, "--output-format", "stream-json", "--verbose", "--append-system-prompt", brief,
            "--tools", "Read,Write,Edit,Bash", "--permission-mode", "dontAsk",
            "--allowedTools", "Read", "Write(./**)", "Edit(./**)", f"Bash({check} *)",
@@ -147,7 +155,9 @@ if __name__ == "__main__":
     ap.add_argument("--model")
     ap.add_argument("--rounds", type=int, default=6)
     ap.add_argument("--style", help="style guide id (ai-3d/styles/<id>.json)")
+    ap.add_argument("--refs", default="", help="reference props of the style to show Claude: Name,Name")
     a = ap.parse_args()
     out = model_prop(a.picture, a.description, a.workdir, a.name, a.model, a.rounds,
-                     on_event=lambda kind, **d: print(f"[{kind}]", json.dumps(d)[:300], flush=True), style=a.style)
+                     on_event=lambda kind, **d: print(f"[{kind}]", json.dumps(d)[:300], flush=True), style=a.style,
+                     refs=[r for r in a.refs.split(",") if r])
     print(json.dumps(out, indent=1))

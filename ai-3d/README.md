@@ -271,6 +271,54 @@ flat muted colours, soft airbrushed shading and dark ink lines along the hard ed
 
 To make another style, copy `inked.json` and `inked.md`, change the words and numbers, and pick it by its file name.
 
+#### A style from your own props (private)
+
+With a .blend of your own hand-made props, a private style can learn from them directly. Everything it builds
+stays out of git: the style in `styles/private/<id>/` and the reference library in `assets/style_refs/<id>/`.
+
+1. `styles/private/<id>/refs.json`: `blend`, `out` (the library folder), `front` (the axis your props face, e.g.
+   `+X`), `exclude` (name patterns of level pieces that are not props), `held_out` (props kept back for evaluation),
+   `hidden` (near-copies of held-out ones) and `descriptions` (a JSON file of one-line descriptions per prop).
+2. `blender -b your.blend --python scripts/style_refs.py -- export refs.json`, then
+   `blender -b --python scripts/style_refs.py -- render refs.json`: every prop as a GLB turned to face -Y, its
+   textures, stats (triangles, parts, UV islands) and renders (textured, flat-lit, clay, wireframe).
+   `python scripts/style_index.py refs.json` writes `index.json` and the catalog sheets.
+3. `styles/private/<id>/style.json` like `inked.json`, plus `"refs": "refs.json"`. The chain then:
+   - picks your 3 props most like the request (`scripts/prop_refs.py`, a short text-only Claude call over the index)
+     and stages their sheets in Claude's modelling folder, with the brief telling it to build the same way;
+   - `"picture_from": "restyle"`: Z-Image draws the object, FLUX.2 klein redraws it in the style of your most
+     similar prop. (`"refs"`, drawing from your props alone, copied them: a wheelie bin came out as the reference
+     pedal bin, a stool as the reference kitchen chair);
+   - `"paint": {"ref_views": "all"}`: your prop is image 2 of every klein view instead of the picture;
+   - `"paint": {"scale": 1.8}`: the export is scaled to your scenes' units (props are modelled at real size).
+4. `python scripts/style_eval.py run refs.json <style> <run>` generates the held-out props from their descriptions;
+   `score refs.json <run> ...` renders them like the references and reports a "theirs or generated?" probe on CLIP
+   ViT-H embeddings (0.5 = indistinguishable), triangle and size ratios and texture stats, with a side-by-side sheet
+   and a shuffled blind lineup; `fit refs.json <run> '<finish json>' ...` re-bakes a run with other finish settings
+   and compares the texture stats with your props' (`"saturation"` below 1 mutes the palette), and `rebake` saves
+   one such finish as a new run to score.
+   On a test library of 70 props with 12 held out, the public `inked` style scored probe 0.88, triangles 1.68x and
+   size 0.56x of the originals; a private style with the reference props, restyled pictures, reference views and
+   a 1.8 scale scored probe 0.68, triangles 1.23x, size 0.99x. What still gives the generated props away is
+   content: hand-drawn labels, logos and text in the originals' textures.
+5. `scripts/style_lora_data.py` renders LoRA training pairs from the library (a guide in flat colour regions taken
+   from your texture -> your painted prop, same camera), for an edit LoRA that teaches klein your painting. Train it
+   with musubi-tuner (SETUP.md section 7) on FLUX.2 klein base 4B, copy the result to `ComfyUI/models/loras/` and
+   name it in the style: `"paint": {"lora": {"file": "<name>.safetensors", "strength": 1.0}}` (`"picture_lora"`
+   does the same for the picture). `style_eval.py run ... --from <run>` repaints an earlier run's models with it,
+   to measure the LoRA on its own. On the test library, a rank-16 LoRA (560 pairs at 512 px, 1600 steps, 5.4 h on
+   an RTX 2080) brought the texture brightness and flatness to within 6 levels and 0.01 of the originals' (from 12
+   and 0.05) but left the probe where it was (0.69 vs 0.68): what still tells the props apart is their design and
+   the hand-drawn graphics, which come from the picture and the modelling, not the paint step.
+6. A picture LoRA: `style_lora_data.py --picture` renders your props from three-quarter views under studio light,
+   captioned with the picture prompt (`prop_chain.PICTURE_CAPTION`); train it the same way without control images
+   and set `"picture_from": "lora", "picture_lora": {...}`: klein then draws the reference picture from text alone.
+   On the test library (336 pictures, 1200 steps, 2.5 h) the probe went from 0.68 to 0.62-0.64 and some designs came
+   out like the originals (a 2x2 cube shelf, a full keyboard slab, a plain whiteboard); the pictures are as dark as
+   the shaded renders it learned from, so the finish's `"value"` (the originals' median brightness, 192 there)
+   brings the textures back up. Some designs still follow the prompt rather than the artist (a cone-shaped wet
+   floor sign came out as an A-frame).
+
 Prompt tips: describe one object, not a scene. Each preset appends its own style hints (the
 game-asset preset asks for a smooth, rounded low-poly prop with clean hand-painted colours on a plain background)
 unless `--raw`. The reference image drives the look of the 3D result, so check

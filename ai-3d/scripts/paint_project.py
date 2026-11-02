@@ -17,7 +17,10 @@ Writes out_dir/<Name>.glb and <Name>_diffuse.png and prints "PAINTBAKE {json}".
   differences (photo texture, view-to-view shading) to the part's median and keeps the big ones (labels, keys),
   "shade" puts back soft painted shading from the baked AO and the height, "ink" draws dark lines of that half-width
   in texels along the hard edges (sharper than "ink_angle" degrees, part borders, open edges) and round the decals,
-  "ink_dark" times the local colour.
+  "ink_dark" times the local colour; "saturation" scales the colours' saturation (below 1 mutes the palette);
+  "value" (0-255) scales the whole texture so the median brightness of its painted texels lands there (gain 0.7-1.6:
+  a style's own median, when its pictures come out darker or lighter than its props);
+  "scale" scales the exported model (the style's unit scale).
 """
 import json
 import math
@@ -27,6 +30,7 @@ import sys
 import bmesh
 import bpy
 import numpy as np
+from mathutils import Matrix
 
 argv = sys.argv[sys.argv.index("--") + 1:]
 glb, gdir, vdir, out_dir, name = argv[:5]
@@ -294,6 +298,12 @@ if FINISH.get("shade"):
     height = np.clip((pos[..., 2] - lo[2]) / ext[2], 0, 1)
     s = (0.62 + 0.38 * soft_ao) * (0.88 + 0.12 * height) * (1 + 0.06 * nrm[..., 2])
     col = col * (1 - FINISH["shade"] + FINISH["shade"] * s[..., None])
+if FINISH.get("value"):
+    med = float(np.median(col[valid].max(-1))) * 255
+    col = np.clip(col * np.clip(float(FINISH["value"]) / max(med, 1.0), 0.7, 1.6), 0, 1)
+if FINISH.get("saturation", 1.0) != 1.0:
+    gray = (col @ np.array([0.2126, 0.7152, 0.0722], np.float32))[..., None]
+    col = np.clip(gray + (col - gray) * float(FINISH["saturation"]), 0, 1)
 if FINISH.get("ink"):
     k = ink_mask(FINISH.get("ink_angle", 40), FINISH["ink"])[..., None] * valid[..., None]
     col = col * (1 - k) + col * FINISH.get("ink_dark", 0.4) * k
@@ -319,9 +329,12 @@ me.materials.append(mat)
 for layer in [layer for layer in me.uv_layers if layer.name != "Bake"]:
     me.uv_layers.remove(layer)
 obj.name = name
+scale = float(FINISH.get("scale", 1.0))
+if scale != 1.0:   # the style's unit scale: modelled at real size, exported at the size its scenes use
+    me.transform(Matrix.Scale(scale, 4))
 out_glb = os.path.join(out_dir, name + ".glb")
 bpy.ops.export_scene.gltf(filepath=out_glb)
 me.calc_loop_triangles()
 print("PAINTBAKE " + json.dumps({"glb": out_glb, "diffuse": png, "seen": round(seen, 3), "locked": locked,
                                  "missing_locks": [k for k in LOCK if k not in locked], "parts": PART_NAMES,
-                                 "tris": len(me.loop_triangles), "size": round(float(ext.max()), 4)}))
+                                 "tris": len(me.loop_triangles), "size": round(float(ext.max()) * scale, 4)}))

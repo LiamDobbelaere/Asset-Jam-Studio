@@ -919,7 +919,9 @@ def flow_paint(job):
 
 def flow_prop(job):
     import paint as genpaint     # ai-3d/scripts
+    import prop_chain
     import prop_model
+    import prop_refs
     import prop_style
     p = job.params
     prompt = (p.get("prompt") or "").strip()
@@ -938,21 +940,24 @@ def flow_prop(job):
     workdir = os.path.join(modelled, name)
     rounds = _int(p.get("rounds"), 6)
 
-    # 1. the reference picture: given, or drawn like the 3D Models image stage
+    # 0. a style with a reference library: the artist's own props most like this one
+    refs = prop_chain.refs_for(style, prompt) if style and style.get("refs") else []
+    if refs:
+        job.meta["refs"] = refs
+        job.add_log("reference props: " + ", ".join(refs))
+        for r in refs:
+            job.add_intermediate(f"Reference prop {r}", "image", prop_refs.front_render(style, r),
+                                 file_url(prop_refs.front_render(style, r)))
+
+    # 1. the reference picture: given, or drawn like the 3D Models image stage (or from the reference props)
     picture = p.get("reference_upload") or url_to_path(p.get("reference_url"))
     if picture and not os.path.isfile(picture):
         raise ValueError(f"reference picture not found: {picture}")
     if not picture:
-        if style and style["picture"] and not p.get("raw"):   # the style's picture words replace the preset's
-            api, info = gen3d.build_api(prompt + style["picture"], "gameasset", True, seed, image_only=True)
-        else:
-            api, info = gen3d.build_api(prompt, "gameasset", bool(p.get("raw")), seed, image_only=True)
-        hist, runner = run_comfy(job, api, (0, 8))
-        for nid, path in history_files(hist, kinds=("images",)):
-            if api.get(nid, {}).get("class_type") == "SaveImage" and "reference" in api[nid]["_meta"]["title"].lower():
-                picture = path
-        if not picture:
-            raise ComfyError("no reference picture in the ComfyUI output")
+        def picture_api(api):
+            hist, runner = run_comfy(job, api, (0, 8))
+            return [path for nid, path in history_files(hist, kinds=("images",))]
+        picture = prop_chain.picture(prompt, style, seed, refs, bool(p.get("raw")), upload=upload_to_comfy, run_api=picture_api)
     job.outputs["reference"] = {"path": picture, "url": file_url(picture)}
     job.publish(force=True)
 
@@ -974,7 +979,7 @@ def flow_prop(job):
 
     m = prop_model.model_prop(picture, prompt, workdir, name, model=p.get("claude_model", "opus") or None, rounds=rounds,
                               effort=p.get("effort") or None, on_event=on_event, should_cancel=lambda: job.cancel_requested,
-                              style=style and style["id"])
+                              style=style and style["id"], refs=refs)
     paint = m["paint"]
     job.meta.update(paint=paint, model_rounds=len(m["sheets"]), model_seconds=m["seconds"], claude_cost_usd=m["cost_usd"],
                     script=m["script"])
@@ -996,6 +1001,7 @@ def flow_prop(job):
     out = genpaint.paint(m["glb"], picture, paint_prompt, name, ASSETS, paint.get("lock") or [], low=bool(paint.get("low")),
                          seed=seed, ipadapter=_float(p.get("ipadapter")), denoise=_float(p.get("denoise")),
                          depth=_float(p.get("depth")), resolution=_int(p.get("resolution"), 1024), style=style,
+                         refs=[prop_refs.front_render(style, r) for r in refs[:1]],
                          size=_float(p.get("size")), fbx=p.get("fbx", True) is not False, upload=upload_to_comfy, run_api=run_api,
                          log=job.add_log, on_file=on_file, should_cancel=lambda: job.cancel_requested,
                          on_progress=lambda pct, phase, detail="": job.set_progress(55 + 0.45 * pct, phase, detail, force=True))

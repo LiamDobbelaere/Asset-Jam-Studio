@@ -5,6 +5,10 @@ ComfyUI/
 assets/*
 !assets/.gitkeep
 
+# private style guides (built from your own props: never published) and the local LoRA trainer
+styles/private/
+train/
+
 # python / tooling
 __pycache__/
 *.pyc
