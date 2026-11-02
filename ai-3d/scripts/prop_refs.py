@@ -72,6 +72,41 @@ def pick(style, description, n=3, model="sonnet", timeout=180):
     return names or _overlap(description, entries, n)
 
 
+def pick_picture(style, description, candidates, refs, model="sonnet", timeout=300):
+    """Index of the candidate picture that best shows the description the way the artist would make it: Claude looks at
+    the candidates and the textured renders of the reference props (Read only). Returns (index, reason); (0, "")
+    when it cannot answer."""
+    import prop_model
+    cli = prop_model.claude_cli()
+    cfg, _ = library(style)
+    if not cli or not cfg or len(candidates) < 2:
+        return 0, ""
+    ref_paths = [os.path.join(cfg["out"], r, "front_325.png") for r in refs]
+    ask = (f"A 3D artist is about to model this game prop from a reference picture: {description}\n\n"
+           "Their own props most like it (read these images first):\n" + "\n".join(f"- {p}" for p in ref_paths) +
+           "\n\nCandidate reference pictures:\n" + "\n".join(f"{i}: {p}" for i, p in enumerate(candidates)) +
+           "\n\nRead every image. Pick the candidate that (1) clearly shows the requested object with every part the "
+           "description names (a wheelie bin has wheels and a hinged lid, a caution sign reads as one), as one object on "
+           "a plain background, and (2) of those, has the design, proportions, simplicity and look closest to the "
+           "artist's props. Answer with its number.")
+    schema = {"type": "object", "properties": {"best": {"type": "integer"}, "why": {"type": "string"}},
+              "required": ["best", "why"], "additionalProperties": False}
+    dirs = sorted({os.path.dirname(os.path.abspath(p)) for p in candidates + ref_paths})
+    cmd = [cli, "-p", ask, "--output-format", "json", "--model", model, "--json-schema", json.dumps(schema),
+           "--tools", "Read", "--allowedTools", "Read", "--permission-mode", "dontAsk", "--strict-mcp-config",
+           "--disable-slash-commands", "--no-session-persistence"]
+    for d in dirs:
+        cmd += ["--add-dir", d]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout,
+                           stdin=subprocess.DEVNULL, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        out = json.loads(r.stdout).get("structured_output") or {}
+    except (subprocess.TimeoutExpired, ValueError):
+        return 0, ""
+    best = out.get("best", 0)
+    return (best if isinstance(best, int) and 0 <= best < len(candidates) else 0), out.get("why", "")
+
+
 def _font(size):
     try:
         return ImageFont.truetype("segoeui.ttf", size)

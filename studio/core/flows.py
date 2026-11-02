@@ -957,7 +957,8 @@ def flow_prop(job):
         def picture_api(api):
             hist, runner = run_comfy(job, api, (0, 8))
             return [path for nid, path in history_files(hist, kinds=("images",))]
-        picture = prop_chain.picture(prompt, style, seed, refs, bool(p.get("raw")), upload=upload_to_comfy, run_api=picture_api)
+        picture = prop_chain.picture(prompt, style, seed, refs, bool(p.get("raw")), upload=upload_to_comfy, run_api=picture_api,
+                                     log=job.add_log)
     job.outputs["reference"] = {"path": picture, "url": file_url(picture)}
     job.publish(force=True)
 

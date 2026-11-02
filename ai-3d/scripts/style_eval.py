@@ -5,6 +5,7 @@
     python style_eval.py score <config.json> <run> [<run> ...]
     python style_eval.py fit <config.json> <run> '{"flatten": 0.85, ...}' ['{...}' ...]
     python style_eval.py rebake <config.json> <run> <new run> '{"flatten": 0.85, ...}'
+    python style_eval.py floor <config.json> <run>
 
 run: the modelled-prop chain as the studio's prop flow runs it (picture -> Claude models it -> paint), for every
 "held_out" prop of the config; three models at a time (Claude, no GPU), pictures and paint one at a time (ComfyUI
@@ -12,7 +13,11 @@ must be running). Results: assets/style_eval/<run>/<Prop>/ (picture.png, model/,
 that run's references, pictures and models and only paints again: to measure a paint change on its own.
 score: renders each run's props with style_refs.py (same cameras and light as the references) and reports, per run:
 - probe: a "theirs or generated?" logistic regression on CLIP ViT-H embeddings of the renders, leave-one-prop-out
-  over the held-out originals and the generated props. 0.5 = cannot tell them apart, 1.0 = always can.
+  over the held-out originals and the generated props. 0.5 = cannot tell them apart, 1.0 = always can. With it its
+  90 % interval (bootstrap over props) and "chance", the highest probe random labels reach at this many props
+  (style_clip.probe_stats): a probe below it cannot be told from 0.5.
+- style: how much the renders look like the library (style_clip.style_score), generated vs the originals; "gap" is
+  the originals' minus the generated: 0 = as close to the artist's other props as the artist's own held-out ones.
 - pair: mean cosine similarity between a generated prop's renders and its original's.
 - tris and size ratios (generated / original; the size ratio is the unit scale between the two) and texture stats.
 Writes report.json, compare.png (original | generated, two views and the textures) and blind.png + blind_key.json
@@ -20,6 +25,8 @@ Writes report.json, compare.png (original | generated, two views and the texture
 fit: re-bakes a run's painted views (no new painting, ~10 s per prop) with each candidate finish (paint_project.py's
 JSON) and compares the medians of the texture stats with the reference library's: value, saturation, flatness.
 rebake: the same with one finish, saved as a new run (same models and views) for score.
+floor: the probe and style gap between each held-out prop and the artist's own most similar other prop (the first
+reference the run picked for it): how far apart two of the artist's own props already are, a realistic target.
 """
 import argparse
 import json
@@ -79,7 +86,8 @@ def run(cfg_path, style, name, props=None, seed=7, model="opus", source=None):
         refs[p] = json.load(open(rp))
         if os.path.isfile(os.path.join(d, "picture.png")):
             continue
-        shutil.copyfile(prop_chain.picture(index[p]["desc"], st, seed + i, refs[p]), os.path.join(d, "picture.png"))
+        shutil.copyfile(prop_chain.picture(index[p]["desc"], st, seed + i, refs[p], log=lambda m: print("  " + m, flush=True)),
+                        os.path.join(d, "picture.png"))
         print(f"picture {p}" + (f" (refs {', '.join(refs[p])})" if refs[p] else ""), flush=True)
 
     sem = threading.Semaphore(3)
@@ -121,50 +129,7 @@ def run(cfg_path, style, name, props=None, seed=7, model="opus", source=None):
             print(f"PAINT FAILED {p}\n{traceback.format_exc()[-800:]}", flush=True)
 
 
-class Clip:
-    """CLIP ViT-H image embeddings through ComfyUI's loader (the IP-Adapter's clip_vision model)."""
-
-    def __init__(self):
-        comfy_dir = os.path.join(ROOT, "ComfyUI")
-        sys.path.insert(0, comfy_dir)
-        import comfy.clip_vision as cv
-        self.m = cv.load(os.path.join(comfy_dir, "models", "clip_vision", "CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors"))
-        self.cache = {}
-
-    def embed(self, path):
-        if path not in self.cache:
-            import torch
-            a = np.asarray(Image.open(path).convert("RGB")).astype(np.float32) / 255
-            with torch.no_grad():
-                e = self.m.encode_image(torch.from_numpy(a)[None])["image_embeds"][0].float().cpu().numpy()
-            self.cache[path] = e / np.linalg.norm(e)
-        return self.cache[path]
-
-
-def _logreg(X, y, l2=1.0, steps=400, lr=0.5):
-    w, b = np.zeros(X.shape[1]), 0.0
-    for _ in range(steps):
-        p = 1 / (1 + np.exp(-(X @ w + b)))
-        g = p - y
-        w -= lr * (X.T @ g / len(y) + l2 * w / len(y))
-        b -= lr * g.mean()
-    return w, b
-
-
-def probe(orig, gen):
-    """Leave-one-prop-out accuracy of telling original from generated. orig/gen: {prop: [embedding per view]}."""
-    props = sorted(set(orig) & set(gen))
-    hits = n = 0
-    for p in props:
-        tr = [q for q in props if q != p]
-        X = np.array([e for q in tr for e in orig[q]] + [e for q in tr for e in gen[q]])
-        y = np.array([0] * sum(len(orig[q]) for q in tr) + [1] * sum(len(gen[q]) for q in tr), np.float64)
-        mu, sd = X.mean(0), X.std(0) + 1e-6
-        w, b = _logreg((X - mu) / sd, y)
-        for e, lab in [(e, 0) for e in orig[p]] + [(e, 1) for e in gen[p]]:
-            hits += int((1 / (1 + np.exp(-(((e - mu) / sd) @ w + b))) > 0.5) == lab)
-            n += 1
-    return hits / max(n, 1)
+from style_clip import Clip, library, probe, probe_stats, style_score   # noqa: E402
 
 
 def _render(folder):
@@ -196,6 +161,8 @@ def score(cfg_path, runs):
     clip = Clip()
     ref = cfg["out"]
     orig = {p: [clip.embed(os.path.join(ref, p, f"front_{v}.png")) for v in VIEWS] for p in held}
+    _, lib = library(cfg, clip)
+    style_orig = float(np.mean([style_score(e, lib) for p in held for e in orig[p]]))
     for name in runs:
         root = os.path.join(EVAL, name)
         _render(root)
@@ -211,9 +178,15 @@ def score(cfg_path, runs):
             rows[p] = {"pair": round(float(np.mean([a @ b for a in gen[p] for b in orig[p]])), 3),
                        "tris": g["tris"], "tris_orig": o["tris"], "tris_ratio": round(g["tris"] / max(o["tris"], 1), 2),
                        "size_ratio": round(max(g["dims"]) / max(dims_o, 1e-6), 3), "texture": tex, "texture_orig": o["texture"]}
-        acc = probe({p: orig[p] for p in props}, gen)
-        rep = {"run": name, "props": len(props), "probe": round(acc, 3),
+        ps = probe_stats({p: orig[p] for p in props}, gen)
+        pairs = np.array([rows[p]["pair"] for p in props])
+        rng = np.random.default_rng(0)
+        pb = [pairs[rng.choice(len(pairs), len(pairs))].mean() for _ in range(1000)]   # bootstrap over props
+        style_gen = float(np.mean([style_score(e, lib) for p in props for e in gen[p]]))
+        rep = {"run": name, "props": len(props), "probe": ps["probe"], "probe_ci": ps["ci"], "chance": ps["chance"],
+               "style": round(style_gen, 4), "style_orig": round(style_orig, 4), "style_gap": round(style_orig - style_gen, 4),
                "pair": round(float(np.mean([r["pair"] for r in rows.values()])), 3),
+               "pair_ci": [round(float(np.percentile(pb, 5)), 3), round(float(np.percentile(pb, 95)), 3)],
                "tris_ratio_median": float(np.median([r["tris_ratio"] for r in rows.values()])),
                "size_ratio_median": float(np.median([r["size_ratio"] for r in rows.values()])),
                "texture_value_diff": float(np.median([r["texture"]["value"] - r["texture_orig"]["value"] for r in rows.values()
@@ -223,7 +196,9 @@ def score(cfg_path, runs):
                "per_prop": rows}
         json.dump(rep, open(os.path.join(root, "report.json"), "w"), indent=1)
         _sheets(root, ref, props, index)
-        print(f"{name}: probe {rep['probe']:.2f} (0.5 = indistinguishable), pair {rep['pair']:.3f}, tris x{rep['tris_ratio_median']:.2f}, "
+        print(f"{name}: probe {rep['probe']:.2f} (90% {rep['probe_ci'][0]:.2f}-{rep['probe_ci'][1]:.2f}, chance up to "
+              f"{rep['chance']:.2f}), style gap {rep['style_gap']:+.3f}, pair {rep['pair']:.3f} ({rep['pair_ci'][0]:.3f}-"
+              f"{rep['pair_ci'][1]:.3f}), tris x{rep['tris_ratio_median']:.2f}, "
               f"size x{rep['size_ratio_median']:.2f}, texture value {rep['texture_value_diff']:+.0f}, flat {rep['texture_flat_diff']:+.2f}")
 
 
@@ -296,6 +271,26 @@ def fit(cfg_path, name, finishes):
               flush=True)
 
 
+def floor(cfg_path, name):
+    cfg, index = _config(cfg_path)
+    clip = Clip()
+    ref, root = cfg["out"], os.path.join(EVAL, name)
+    held = [p for p in cfg["held_out"] if os.path.isfile(os.path.join(root, p, "refs.json"))]
+    orig = {p: [clip.embed(os.path.join(ref, p, f"front_{v}.png")) for v in VIEWS] for p in held}
+    other = {p: [clip.embed(os.path.join(ref, json.load(open(os.path.join(root, p, "refs.json")))[0], f"front_{v}.png"))
+                 for v in VIEWS] for p in held}
+    keys, lib = library(cfg, clip)
+    ps = probe_stats(orig, other)
+    first = {p: json.load(open(os.path.join(root, p, "refs.json")))[0] for p in held}
+
+    def without(name):   # the library minus the prop itself, or it matches its own renders
+        return lib[[i for i, k in enumerate(keys) if k.split("/")[0] != name]]
+    gap = float(np.mean([style_score(e, lib) for p in held for e in orig[p]])
+                - np.mean([style_score(e, without(first[p])) for p in held for e in other[p]]))
+    print(f"floor (your held-out props vs your most similar other prop): probe {ps['probe']:.2f} (90% {ps['ci'][0]:.2f}-"
+          f"{ps['ci'][1]:.2f}, chance up to {ps['chance']:.2f}), style gap {gap:+.3f}")
+
+
 def rebake(cfg_path, name, new, fin):
     import paint
     root, dst = os.path.join(EVAL, name), os.path.join(EVAL, new)
@@ -323,7 +318,7 @@ def rebake(cfg_path, name, new, fin):
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("mode", choices=["run", "score", "fit", "rebake"])
+    ap.add_argument("mode", choices=["run", "score", "fit", "rebake", "floor"])
     ap.add_argument("config")
     ap.add_argument("names", nargs="+", help="run: <style> <run>; score: <run> ...; fit: <run> <finish json> ...")
     ap.add_argument("--props")
@@ -335,6 +330,8 @@ if __name__ == "__main__":
         run(a.config, a.names[0], a.names[1], a.props.split(",") if a.props else None, a.seed, a.model, a.source)
     elif a.mode == "fit":
         fit(a.config, a.names[0], [json.loads(f) for f in a.names[1:]])
+    elif a.mode == "floor":
+        floor(a.config, a.names[0])
     elif a.mode == "rebake":
         rebake(a.config, a.names[0], a.names[1], json.loads(a.names[2]))
     else:

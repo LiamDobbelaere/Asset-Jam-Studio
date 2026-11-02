@@ -7,7 +7,10 @@ which reference props a style shows (prop_refs.py) and how the reference picture
     prop from the reference props alone; klein then copies them too closely (asked for a wheelie bin with the artist's
     pedal bin as the sample, it drew the pedal bin; a stool came out as their kitchen chair), so it is not the default.
     "lora" draws it with klein from text alone through the style's "picture_lora", a LoRA trained on the artist's own
-    props (style_lora_data.py --picture), captioned the same way as its training pictures (PICTURE_CAPTION).
+    props (style_lora_data.py --picture), captioned the same way as its training pictures (PICTURE_CAPTION). With
+    "picture_candidates": N it draws N (seeds seed .. seed+N-1) and Claude keeps the one that shows the object with all
+    its parts and looks most like the reference props (prop_refs.pick_picture; "picture_pick": "clip" ranks them by
+    CLIP similarity to the library instead, which did not track the style: the public inked style scored best on it).
 """
 import uuid
 
@@ -34,15 +37,29 @@ def refs_for(style, prompt, n=3):
     return prop_refs.pick(st, prompt, n) if st and st.get("refs") else []
 
 
-def picture(prompt, style, seed, refs=(), raw=False, upload=paint._cli_upload, run_api=paint._cli_run, prefix="paint/picture"):
+def picture(prompt, style, seed, refs=(), raw=False, upload=paint._cli_upload, run_api=paint._cli_run, prefix="paint/picture",
+            log=lambda s: None):
     """Draw the reference picture; returns its path."""
     st = prop_style.load(style) if isinstance(style, str) or style is None else style
     mode = st.get("picture_from") if st and not raw else None
     if mode == "lora" and st.get("picture_lora"):
-        api = paint.klein_t2i_api(PICTURE_CAPTION.format(prompt=prompt), seed, prefix, lora=st["picture_lora"])
-        files = run_api(api)
-        if not files:
-            raise RuntimeError("ComfyUI returned no reference picture")
+        text = PICTURE_CAPTION.format(prompt=prompt)
+        files = []
+        for k in range(max(1, int(st.get("picture_candidates", 1)))):
+            got = run_api(paint.klein_t2i_api(text, seed + k, prefix, lora=st["picture_lora"]))
+            if not got:
+                raise RuntimeError("ComfyUI returned no reference picture")
+            files.append(got[0])
+        if len(files) > 1 and st.get("refs") and st.get("picture_pick", "claude") == "clip":
+            import style_clip
+            scores = style_clip.rank(st["refs"], files)
+            best = max(range(len(files)), key=lambda i: scores[i])
+            log(f"picture: kept {best + 1} of {len(files)} (style scores {', '.join(f'{v:.3f}' for v in scores)})")
+            return files[best]
+        if len(files) > 1 and st.get("refs") and refs:
+            best, why = prop_refs.pick_picture(st, prompt, files, list(refs))
+            log(f"picture: kept {best + 1} of {len(files)}: {why}")
+            return files[best]
         return files[0]
     if not refs:
         mode = None

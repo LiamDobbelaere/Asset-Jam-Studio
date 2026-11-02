@@ -318,6 +318,16 @@ stays out of git: the style in `styles/private/<id>/` and the reference library 
    the shaded renders it learned from, so the finish's `"value"` (the originals' median brightness, 192 there)
    brings the textures back up. Some designs still follow the prompt rather than the artist (a cone-shaped wet
    floor sign came out as an A-frame).
+7. How far the numbers carry: `score` prints the probe's 90 % range and "chance" (what random labels reach at this
+   many props), and `floor` scores the originals against the artist's own most similar other props. With 12 held
+   out, the floor was 0.64 and chance up to 0.62-0.67, so every private-style run above (0.62-0.69) was already
+   at the noise level; only the public style (0.88) stood clearly above it. Past that point, judge by the pair
+   score (similarity to the original made for the same prompt) and by eye, or hold out more props.
+   `"picture_candidates": N` draws N pictures and lets Claude keep the one that shows the object with all its
+   parts and looks most like the reference props (`prop_refs.pick_picture`; `"picture_pick": "clip"` ranks them by
+   CLIP similarity to the library instead, which did not track the style: the public style scored best on it). On
+   the test library best-of-4 left the pair score where it was (0.738 vs 0.739): it fixed a bin without wheels and
+   picked worse colours or designs for others, so it is off by default.
 
 Prompt tips: describe one object, not a scene. Each preset appends its own style hints (the
 game-asset preset asks for a smooth, rounded low-poly prop with clean hand-painted colours on a plain background)

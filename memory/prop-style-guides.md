@@ -49,6 +49,10 @@ pedal bin, filing cabinet, microwave, backpack, bookshelf):
 - 2026-11-02, a text-to-image picture LoRA (klein, the props' three-quarter renders) moved the probe 0.68 -> 0.62-0.64:
   the biggest single gain after the reference props. Its pictures are as dark as the shaded renders it learned from,
   so Claude picks dark part colours; the finish "value" (target median brightness) fixes the textures.
+- 2026-11-02, measurement limits: with 12 held-out props the probe's chance level (random labels) is ~0.62-0.67
+  and the artist's own props score ~0.64 against each other, so the probe stops resolving gains below ~0.65; the
+  CLIP nearest-library "style gap" did not track style at all. Best-of-4 pictures with a Claude picker did not move
+  the pair score (0.738 vs 0.739). Use more held-out props, or the user's eye, for further decisions.
 
 **Why:** the user wants generated props that sit next to their own; the texture look was the biggest gap, then
 over-detailed geometry.
