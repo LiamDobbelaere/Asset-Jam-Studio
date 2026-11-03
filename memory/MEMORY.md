@@ -17,4 +17,5 @@ One line per memory in this folder. Private notes (gitignored) are indexed in `p
 - [Music generation setup](music-generation-setup.md) — ai-mus: ACE-Step 1.5 2B turbo + 0.6B planner (bf16 LM, CPU-offloaded, on Turing), MIT; why not MusicGen/Stable Audio/HeartMuLa
 - [SFX generation setup](sfx-generation-setup.md) — ai-sfx: MOSS-SoundEffect v2.0 (Apache-2.0), fp16 DiT + swapped text encoder/VAE; VRAM-spill 14 s/step trap; crop margin + trim + 30 Hz HPF
 - [Video intro (ai-vid)](video-intro-plan.md) — on main, experimental (first draft judged bad); Wan 2.2 5B fp16 pipeline + studio Video tab; why not LTX-2.5/Hunyuan/14B
+- [Self-improvement loop](self-improvement-loop.md) — improve/: runner-owned scoring, calibrated noise floor, branch per track; prop-model track; status
 - [Character animation (ai-anim)](character-animation-setup.md) — Make-It-Animatable rig + Kimodo text-to-motion + Blender retarget; gated Llama-3 encoder; studio Animate tab

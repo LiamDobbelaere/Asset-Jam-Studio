@@ -1,0 +1,50 @@
+{
+  "label": "Modelled props: how close Claude's models come to the artist's",
+  "goal": "Given a prop's own reference render as the picture, make Claude's prop_kit model (shape, proportions, part count, triangle count) closer to the way the artist built that prop. The picture is held fixed, so this measures the modelling brief and the modelling helpers, not the picture or the paint.",
+  "metric": {
+    "key": "pair_clay",
+    "direction": "max",
+    "min_delta": 0.01,
+    "guards": {
+      "failed": [0, 0],
+      "tris_ratio_median": [0.5, 2.0]
+    },
+    "also": ["pair_clay_sameview", "tris_ratio_median", "size_ratio_median", "cost_usd"]
+  },
+  "editable": [
+    "ai-3d/scripts/prop_brief.md",
+    "ai-3d/scripts/prop_kit.py"
+  ],
+  "readonly": [
+    "improve/PROGRAM.md",
+    "improve/loop.py",
+    "improve/scorers/**",
+    "improve/tracks/prop-model/track.json",
+    "ai-3d/scripts/prop_model.py",
+    "ai-3d/scripts/prop_check.py",
+    "ai-3d/scripts/prop_views.py",
+    "ai-3d/scripts/prop_refs.py",
+    "ai-3d/scripts/prop_style.py",
+    "ai-3d/scripts/style_refs.py",
+    "ai-3d/scripts/style_clip.py",
+    "ai-3d/scripts/style_eval.py",
+    "ai-3d/styles/**"
+  ],
+  "context": [
+    "ai-3d/scripts/prop_brief.md",
+    "ai-3d/scripts/prop_kit.py",
+    "ai-3d/scripts/prop_check.py",
+    "ai-3d/styles/inked.md",
+    "memory/prop-style-guides.md",
+    "memory/agent-modelling-exploration.md"
+  ],
+  "score": {
+    "cmd": ["{py}", "improve/scorers/score_prop_model.py", "--config", "{config}", "--style", "{style}", "--model", "{model}",
+            "--out", "{out}", "--workdir", "{workdir}", "--refs-cache", "{track_runs}/refs_cache.json"],
+    "timeout": 5400,
+    "model": "opus"
+  },
+  "gpu": "light",
+  "private": "private.json",
+  "private_fields": "style (the style id whose reference library scores the models) and config (its refs.json); the style is private because the library is built from the user's own props"
+}

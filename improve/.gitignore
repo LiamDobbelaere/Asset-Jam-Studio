@@ -1,0 +1,7 @@
+# per-iteration work (models, renders, Claude logs, scores): large and reproducible from the branch
+runs/
+# the person's kill switch
+STOP
+# private track settings (style ids and configs built from the user's own props)
+tracks/*/private.json
+__pycache__/
