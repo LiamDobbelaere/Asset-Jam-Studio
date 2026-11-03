@@ -23,6 +23,8 @@ spread swallows every plausible gain needs a cheaper or less noisy metric, not m
 The first track `prop-model` measures modelling only (picture = the artist's own render, metric = CLIP cosine of
 clay views, `pair_clay`); the full chain stays with `style_eval.py`. Status 2026-11-03: dry-run and a two-prop
 scorer smoke test done (Sonnet: box pair 0.899 at 96 vs 22 tris, cup 0.893 at 266 vs 160, size x0.6, $0.28, ~3 min);
-a full calibration and real iterations not yet run, so the noise of `pair_clay` is unknown. The headless permission
+calibration 2026-11-03 (Opus, two full scores, $7.47, ~6.5 min each): `pair_clay` 0.8715 / 0.8700, spread 0.0015,
+so the 12-prop mean is far less noisy than the per-prop numbers (per-prop triangle counts vary up to 2.5x between
+runs); keep threshold stays 0.01. No real iteration has run yet. The headless permission
 rules `Write(./path)` / `Edit(./path)` with `--permission-mode dontAsk` were verified to allow exactly those files.
 Related: [[prop-style-guides]], [[agent-modelling-exploration]].
