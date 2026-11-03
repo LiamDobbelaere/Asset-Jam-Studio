@@ -2,3 +2,4 @@ iter	date	status	pair_clay	delta	cost_usd	commit	title
 0	2026-11-03	baseline	0.8708		7.47		calibration x2: 0.8715, 0.8700, spread 0.0015
 1	2026-11-03	discard	0.8712	+0.0004	4.24		#1 low triangle budget + fewer segments: discard, pair_clay 0.8708 -> 0.8712 (+0.0004); tris ratio moved to 0.985 but score did not, so tri count is not the lever
 2	2026-11-03	discard	0.8663	-0.0045	4.09		#2 no invented structure rule: discard, pair_clay 0.8708 -> 0.8663 (-0.0045); weak props unchanged, so "don't add parts" is not the lever
+3	2026-11-03	discard	0.8604	-0.0104	4.13		#3 see-through fronts as recesses: discard, pair_clay 0.8708 -> 0.8604 (-0.0104); VendingMachine did not gain (0.77), tris_ratio_median rose to 1.665

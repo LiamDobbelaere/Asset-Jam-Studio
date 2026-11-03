@@ -45,3 +45,10 @@ Rewritten by the loop's reflect step; a person may edit it too.
   ShelfSquare fell 0.85 -> 0.80 (276 tris vs 88), VendingMachine 0.79 (264 vs 1766), tris_ratio_median 1.175 (up).
   A "don't add" rule does not fix the weak props: their gap is how the artist built them, not extra parts. The
   rule may even cost a little by making hidden sides too plain. Rules out invented structure as the lever.
+- #3 see-through fronts as recesses (one sentence in the "visible mechanical parts" rule: glass front = real recess,
+  contents as boxes/slabs): **discard**, pair_clay 0.8708 -> 0.8604 (-0.0104, wrong direction, 7x the noise).
+  VendingMachine did not improve: 0.79 -> 0.77, 316 tris vs 1766 (still 5x under). tris_ratio_median 1.665 (up from
+  1.05; guard still ok): Keyboard 56 vs 12, CardboardBox 56 vs 22, WetFloorCone 200 vs 66, ShelfSquare 212 vs 88,
+  Whiteboard 384 vs 184 all over. A sentence about recesses made Claude add parts everywhere, not just on the
+  vending machine, and the extra detail lowered the score. Third rule-adding brief change in a row that is
+  neutral or worse: more rules do not help.
