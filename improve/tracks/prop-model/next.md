@@ -1,12 +1,12 @@
 # Handoff to the next iteration
 
-Iteration 1 (low triangle budget + fewer segments) was discarded: pair_clay 0.8712 vs 0.8708, so triangle count is
-not the lever. Do not retry budget or segment rules.
+Discarded so far: #1 triangle budget / segments (0.8712 vs 0.8708) and #2 no invented structure (0.8663 vs 0.8708).
+Do not retry budget, segment or "don't add parts" rules. Baseline 0.8708, noise 0.0015, keep threshold +0.01.
 
-Next: backlog "No invented structure". First look at the contact sheet of run 001
-(`improve/runs/prop-model/001/work/sheet.png`) and see what the weak props (Whiteboard 0.71, WaterCooler 0.84,
-VendingMachine 0.84, ShelfSquare 0.85) add or miss against the originals. Then edit `ai-3d/scripts/prop_brief.md`:
-add one short rule that nothing absent from the picture is modelled (no easel, braces, signs, extra feet) and that
-each part must be visible in at least one of the four views. Keep the change small; do not touch the triangle
-rules. Expect Whiteboard to rise most; the mean should gain 0.01 only if invented structure is common.
-If it also fails, try "Silhouette first" next.
+Next: backlog "Silhouette first". Edit `ai-3d/scripts/prop_brief.md` only: make matching the outline from each of the
+four views the first step and first check (before any detail), and say that a part which changes no silhouette is
+dropped or made a decal. Prefer reorganising or replacing existing sentences over adding new ones, so the brief does
+not grow. Keep triangle rules untouched. Look at `improve/runs/prop-model/002/work/sheet.png` first: Whiteboard
+(0.70), VendingMachine (0.79) and ShelfSquare (0.80, 276 tris vs 88) are the weak ones; check whether their outline
+differs from the original or only the inner detail does. If the outline already matches, "Silhouette first" is
+unlikely to help: then take "Model the interior/volume the artist shows" instead.

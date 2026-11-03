@@ -39,3 +39,9 @@ Rewritten by the loop's reflect step; a person may edit it too.
   (+0.0004, inside the 0.0015 noise). tris_ratio_median 1.05 -> 0.985, so the brief did move the count, but
   Whiteboard (372 vs 184), CoffeeCup (228 vs 160) and WetFloorCone (88 vs 66) stayed over and the score did not
   follow. Triangle count is not what drives clay similarity; Whiteboard 0.71 is about shape/structure, not budget.
+- #2 no invented structure (two sentences in "Model what the picture shows": no easel/braces/signs/extra legs, hidden
+  sides = simplest continuation): **discard**, pair_clay 0.8708 -> 0.8663 (-0.0045, outside the 0.0015 noise but
+  below the wrong direction threshold, so treat as slightly worse or zero). Whiteboard stayed 0.70 (340 tris vs 184),
+  ShelfSquare fell 0.85 -> 0.80 (276 tris vs 88), VendingMachine 0.79 (264 vs 1766), tris_ratio_median 1.175 (up).
+  A "don't add" rule does not fix the weak props: their gap is how the artist built them, not extra parts. The
+  rule may even cost a little by making hidden sides too plain. Rules out invented structure as the lever.
