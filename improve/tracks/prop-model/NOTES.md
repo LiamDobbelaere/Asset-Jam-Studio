@@ -35,4 +35,7 @@ Rewritten by the loop's reflect step; a person may edit it too.
 
 ## Tried
 
-(nothing yet; the first iteration scores the baseline)
+- #1 low triangle budget (150-400 tris, 8-12 segments; backlog 1+4): **discard**, pair_clay 0.8708 -> 0.8712
+  (+0.0004, inside the 0.0015 noise). tris_ratio_median 1.05 -> 0.985, so the brief did move the count, but
+  Whiteboard (372 vs 184), CoffeeCup (228 vs 160) and WetFloorCone (88 vs 66) stayed over and the score did not
+  follow. Triangle count is not what drives clay similarity; Whiteboard 0.71 is about shape/structure, not budget.

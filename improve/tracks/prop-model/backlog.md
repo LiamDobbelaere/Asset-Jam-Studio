@@ -3,13 +3,14 @@
 Hypotheses to try, best first. The reflect step reorders, adds and strikes items; mark a tried item with its
 iteration number and result, do not delete it.
 
-- [ ] Triangle budget from the picture: tell Claude to estimate the artist's budget from the object's size class
-  and stay at the low end (the artist's median is 140-320 tris at every size; ours is 1.2-1.7x theirs).
+- [x] ~~Triangle budget from the picture~~ #1: merged with item "fewer segments", discard (0.8712 vs 0.8708).
+  Rules out tri count / segment count as a lever.
+- [ ] No invented structure (moved up): Whiteboard 0.71 is the weakest prop at 2x tris; see item below.
 - [ ] Silhouette first: a rule to match the outline from each of the four views before any detail, and to drop any
   part that does not change a silhouette (the brief says this; make it the first check in the loop).
 - [ ] Proportions check: have Claude write the three overall dimensions it reads off the picture before modelling and
   compare the clay check's bounding box to them (size_ratio is already ~1.0, so this may only help part proportions).
-- [ ] Fewer segments: lathes and cylinders at 8 segments by default, 12-16 only for the one big round hero part.
+- [x] ~~Fewer segments~~ #1: done together with the budget item, no gain.
 - [ ] No invented structure: say plainly that nothing absent from the picture is modelled (earlier runs grew an easel
   under a whiteboard, X-bracing on a shelf, a sign on a vending machine from the reference props).
 - [ ] Shorter brief: remove rules that have not been shown to help and see whether the score holds (equal score with
