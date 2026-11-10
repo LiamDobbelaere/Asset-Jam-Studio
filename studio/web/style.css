@@ -168,6 +168,13 @@ main { padding: 20px; }
 .big { background: var(--bg3); border: 1px solid var(--line); border-radius: var(--radius-s); min-height: 320px; display: flex; align-items: center; justify-content: center; overflow: hidden; position: relative; }
 .big img { max-width: 100%; max-height: 560px; }
 .big.checker { background: var(--checker); }
+.pix img, img.pix, .pix video { image-rendering: pixelated; image-rendering: crisp-edges; }
+.big.pix { padding: 16px; }
+.big.pix img { max-width: 100%; max-height: 560px; }
+.swatches { display: flex; flex-wrap: wrap; gap: 3px; }
+.swatches i { display: inline-block; width: 14px; height: 14px; border-radius: 3px; border: 1px solid rgba(0,0,0,.4); }
+.sheet { overflow-x: auto; background: var(--checker); border: 1px solid var(--line); border-radius: var(--radius-s); padding: 8px; margin-top: 8px; }
+.sheet img { display: block; image-rendering: pixelated; }
 .big.tiled { background-size: 25% 25%; background-repeat: repeat; min-height: 520px; image-rendering: auto; }
 .kv { display: grid; grid-template-columns: 120px 1fr; gap: 4px 12px; font-size: 12.5px; margin-top: 10px; }
 .kv dt { color: var(--fg3); }

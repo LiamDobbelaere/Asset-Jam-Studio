@@ -2,8 +2,9 @@
 
 # Asset Jam Studio
 
-A local, offline game-asset studio: 3D props, seamless textures, 2D sprites, voice lines, music, sound
-effects, intro videos and rigged, animated characters from text, all on your own GPU.
+A local, offline game-asset studio: 3D props, seamless textures, 2D sprites, pixel art and animated pixel-art
+sprite sheets, voice lines, music, sound effects, intro videos and rigged, animated characters from text, all on
+your own GPU.
 
 ![The 3D Models page: a generated treasure chest in the viewer](docs/screenshots/model3d.png)
 
@@ -23,7 +24,7 @@ ask your LLM to adapt the settings for your GPU.
 
 | Folder | What | Models |
 |---|---|---|
-| [`ai-3d/`](ai-3d/README.md) | text → low-poly 3D props (GLB + Unity FBX), seamless world textures, 2D sprite edit/pose/generation | Z-Image-Turbo, Pixal3D / TRELLIS.2, FLUX.2 klein 4B, BiRefNet, MoGe-2 in ComfyUI |
+| [`ai-3d/`](ai-3d/README.md) | text → low-poly 3D props (GLB + Unity FBX), seamless world textures, 2D sprite edit/pose/generation, pixel art stills, walk-cycle sprite sheets and animated pixel art from a still | Z-Image-Turbo, Pixal3D / TRELLIS.2, FLUX.2 klein 4B (+ pixel-art and sprite-sheet LoRAs), BiRefNet, MoGe-2, Wan 2.2 14B GGUF (+ pixel-animate LoRA) in ComfyUI |
 | [`ai-voc/`](ai-voc/README.md) | text → dialogue in an actor's voice, with moods and optional fine-tuning | Qwen3-TTS 1.7B-Base, Whisper large-v3-turbo |
 | [`ai-mus/`](ai-mus/README.md) | text → game music (instrumental or sung), seamless loops, 48 kHz stereo | ACE-Step 1.5 (2B turbo DiT + 0.6B planner LM) |
 | [`ai-sfx/`](ai-sfx/README.md) | text → sound effects (explosions, gunshots, footsteps, UI sounds, ambience loops), 48 kHz mono | MOSS-SoundEffect v2.0 (1.3B DiT + Qwen3-1.7B text encoder) |

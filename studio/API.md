@@ -7,7 +7,7 @@ Claude to use it. No authentication: the server listens on localhost only.
 ## The model
 
 - A **job** is one generation request: `{"kind": ..., "params": {...}}`. Kinds: `model3d`, `texture`, `sprite`,
-  `voice`, `voice_prep`, `music`, `sfx`, `video`, `anim`, `paint`, `prop`.
+  `pixel`, `pixel_sheet`, `pixel_anim`, `voice`, `voice_prep`, `music`, `sfx`, `video`, `anim`, `paint`, `prop`.
 - Jobs are **queued and run one at a time**, oldest first, by one worker thread. Only one model set is on the
   GPU at any moment: before a ComfyUI job the voice / music / sfx / animation workers unload their models; before a
   voice, music, sfx or animation job the other workers unload and ComfyUI is asked to free its VRAM. Queuing ten jobs
@@ -22,7 +22,7 @@ Claude to use it. No authentication: the server listens on localhost only.
 
 | Method, path | What |
 |---|---|
-| `GET /api/health` | `{ok, version, backends: {comfy, voice, music, sfx, video, prop, paint, anim}, running, queued, gpu}`: which back-ends are installed and usable right now |
+| `GET /api/health` | `{ok, version, backends: {comfy, voice, music, sfx, video, pixel, prop, paint, anim}, running, queued, gpu}`: which back-ends are installed and usable right now |
 | `GET /api/schema` | every kind with its `summary`, typical `time`, `outputs` and `params` (type, help, default, choices, required) |
 | `POST /api/jobs` `{"kind", "params", "parent"?}` | validate and queue; returns the job record (`400` with `{"error"}` when a parameter is wrong) |
 | `GET /api/jobs?kind=&status=&limit=` | recent jobs, newest first (log trimmed to the last 3 lines) |
@@ -33,7 +33,7 @@ Claude to use it. No authentication: the server listens on localhost only.
 | `GET /api/jobs/<id>/preview` | the latest sampler preview image of a running ComfyUI job |
 | `GET /api/events` | server-sent events: `job`, `log`, `preview`, `system`, `job_removed` |
 | `GET /api/state` | system state + the last 200 jobs (what the browser loads at start) |
-| `GET /api/library/models\|textures\|sprites\|voice\|music\|sfx\|videos\|characters` | what is on disk, joined with the job that made it |
+| `GET /api/library/models\|textures\|sprites\|pixels\|voice\|music\|sfx\|videos\|characters` | what is on disk, joined with the job that made it |
 | `GET /api/voices` | prepared voices with moods, reference transcripts, fine-tuned checkpoints; `GET\|POST /api/voices/<name>/clips` lists / edits the clip transcripts |
 | `GET /api/presets3d`, `/api/music`, `/api/sfx`, `/api/video`, `/api/anim` | preset details, installed models, prompt tips, readiness per flow |
 | `POST /api/upload?name=x.png` (raw body) | copies a file into `studio/uploads/`; returns `{path, url}` to use as `reference_upload`, `image_upload`, `ref_uploads[]`, `audio_upload`, `mesh_upload` |
@@ -52,6 +52,9 @@ against). The short version:
 | `model3d` | `prompt` (or `reference_upload`) | `stage image\|model\|full`, `preset gameasset\|character\|detailed`, `shape hard\|round`, `edges sharp\|soft`, `normalmap`, `remesh`, `name`, `size`, `tris`, `model pixal3d\|trellis2`, `seed`, `resolution`, `texture`, `fbx`, `raw` |
 | `texture` | `prompt` | `name`, `width`/`height` (256..2048), `tile native\|crossfade\|none`, `lora`, `seed`, `steps`, `band`, `denoise`, `raw`, `reference_upload` + `strength` |
 | `sprite` | `prompt` | `name`, `image_upload` (image 1), `ref_uploads` (image 2, 3), `model distilled\|base`, `alpha auto\|keep\|none`, `width`+`height`, `seed`, `steps`, `cfg`, `negative`, `megapixels`, `bg`, `match_source`, `raw` |
+| `pixel` | `prompt` | `name`, `kind sprite\|scene\|none`, `width`+`height` (art pixels), `colors`, `image_upload` (image 1), `ref_uploads`, `alpha auto\|keep\|none`, `seed`, `scale`, `sample center\|box`, `model auto\|distilled\|base`, `lora_strength`, `steps`, `cfg`, `negative`, `bg`, `raw` |
+| `pixel_sheet` | `prompt` and / or `image_upload` | `name`, `colors`, `fps`, `seed`, `steps`, `cfg`, `lora_strength`, `negative`, `preview_scale`, `sample`, `raw` |
+| `pixel_anim` | `prompt`, `still_upload` | `engine wan14\|wan5b`, `lora_strength`,  `name`, `frames`, `fps`, `seconds`, `loop`, `seed`, `steps`, `cfg`, `negative`, `width`+`height`+`colors` (non-pixel stills), `preview_scale`, `keep_frames`, `raw` |
 | `voice` | `text`, `voice` | `mood`, `takes`, `seed`, `language`, `temperature`, `top_k`, `top_p`, `repetition_penalty`, `mood_timbre`, `model`, `speaker` |
 | `voice_prep` | `name` + (`folder` or `mood` + `refs`) | `language`, `ref_seconds`, `max_ref_clips` |
 | `music` | `caption` | `name`, `duration`, `loop`, `crossfade`, `takes`, `seed`, `format wav\|ogg\|flac`, `lyrics`, `instrumental`, `language`, `bpm`, `keyscale`, `timesignature`, `think`, `lm`, `steps`, `shift`, `lm_temperature`, `reference_upload` |
@@ -68,6 +71,9 @@ Outputs by kind (`job.outputs`):
 - `style` (`prop`, `paint`): a style guide id from `ai-3d/styles/` (`inked`: chunky hand-painted props with ink lines, painted with FLUX.2 klein); `GET /api/presets3d` lists them under `_styles`. Empty: the default look
 - `prop`: as `paint`, plus `script` (Claude's Blender script) and `checks: [{path, url}]` (clay check per round); `meta.paint` holds Claude's paint settings and notes
 - `texture`: `texture`, `preview2x2`; `sprite`: `sprite`, `raw`
+- `pixel`: `pixel` → `{path, url, width, height, colors}`, `raw`; `meta.palette` lists the colours
+- `pixel_sheet`: `sheet`, `json`, `raw`, `reference` → `{path, url}`, `frames: [{name, path, url}]` (16 cells), `gifs: [{name, path, url}]` (4 walk cycles); `meta.palette`
+- `pixel_anim`: `sheet`, `gif`, `json`, `mp4`, `still` → `{path, url}`, `frames: [{path, url}]`
 - `voice`, `music`, `sfx`: `files: [{path, url, seed, duration, meta?}]` (one per take)
 - `video`: `final`, `clips[]`, `keyframes[]`, `project`
 - `anim`: `glb`, `fbx`, `diffuse`, `blend`, `clips: [{name, prompt, seconds, seed, bvh}]`

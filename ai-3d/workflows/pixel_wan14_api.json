@@ -1,0 +1,347 @@
+{
+ "1": {
+  "inputs": {
+   "unet_name": "Wan2.2-I2V-A14B-HighNoise-Q4_K_S.gguf"
+  },
+  "class_type": "UnetLoaderGGUF",
+  "_meta": {
+   "title": "Wan 2.2 I2V 14B high noise (GGUF)"
+  }
+ },
+ "2": {
+  "inputs": {
+   "unet_name": "Wan2.2-I2V-A14B-LowNoise-Q4_K_S.gguf"
+  },
+  "class_type": "UnetLoaderGGUF",
+  "_meta": {
+   "title": "Wan 2.2 I2V 14B low noise (GGUF)"
+  }
+ },
+ "3": {
+  "inputs": {
+   "clip_name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+   "type": "wan",
+   "device": "default"
+  },
+  "class_type": "CLIPLoader",
+  "_meta": {
+   "title": "umT5-XXL text encoder"
+  }
+ },
+ "4": {
+  "inputs": {
+   "vae_name": "wan_2.1_vae.safetensors"
+  },
+  "class_type": "VAELoader",
+  "_meta": {
+   "title": "Wan 2.1 VAE"
+  }
+ },
+ "10": {
+  "inputs": {
+   "model": [
+    "1",
+    0
+   ],
+   "lora_name": "wan2.2_i2v_high_noise_lightx2v_4step.safetensors",
+   "strength_model": 1.0
+  },
+  "class_type": "LoraLoaderModelOnly",
+  "_meta": {
+   "title": "lightx2v 4-step (high)"
+  }
+ },
+ "11": {
+  "inputs": {
+   "model": [
+    "10",
+    0
+   ],
+   "lora_name": "wan2.2_pixel_animate.safetensors",
+   "strength_model": 1.0
+  },
+  "class_type": "LoraLoaderModelOnly",
+  "_meta": {
+   "title": "pixel animate (high)"
+  }
+ },
+ "12": {
+  "inputs": {
+   "model": [
+    "11",
+    0
+   ],
+   "shift": 5.0
+  },
+  "class_type": "ModelSamplingSD3",
+  "_meta": {
+   "title": "Shift 5 (high)"
+  }
+ },
+ "20": {
+  "inputs": {
+   "model": [
+    "2",
+    0
+   ],
+   "lora_name": "wan2.2_i2v_low_noise_lightx2v_4step.safetensors",
+   "strength_model": 1.0
+  },
+  "class_type": "LoraLoaderModelOnly",
+  "_meta": {
+   "title": "lightx2v 4-step (low)"
+  }
+ },
+ "21": {
+  "inputs": {
+   "model": [
+    "20",
+    0
+   ],
+   "lora_name": "wan2.2_pixel_animate.safetensors",
+   "strength_model": 1.0
+  },
+  "class_type": "LoraLoaderModelOnly",
+  "_meta": {
+   "title": "pixel animate (low)"
+  }
+ },
+ "22": {
+  "inputs": {
+   "model": [
+    "21",
+    0
+   ],
+   "shift": 5.0
+  },
+  "class_type": "ModelSamplingSD3",
+  "_meta": {
+   "title": "Shift 5 (low)"
+  }
+ },
+ "5": {
+  "inputs": {
+   "text": "pixel art sprite animation, the knight walks in place, side view, static camera, plain white background",
+   "clip": [
+    "3",
+    0
+   ]
+  },
+  "class_type": "CLIPTextEncode",
+  "_meta": {
+   "title": "PROMPT (what moves)"
+  }
+ },
+ "6": {
+  "inputs": {
+   "text": "blurry, smooth gradients, photorealistic, 3d render, text, watermark, camera motion, zoom, morphing, extra limbs, deformed",
+   "clip": [
+    "3",
+    0
+   ]
+  },
+  "class_type": "CLIPTextEncode",
+  "_meta": {
+   "title": "NEGATIVE"
+  }
+ },
+ "30": {
+  "inputs": {
+   "image": "pixel_start.png",
+   "upload": "image"
+  },
+  "class_type": "LoadImage",
+  "_meta": {
+   "title": "START frame (the still)"
+  }
+ },
+ "31": {
+  "inputs": {
+   "positive": [
+    "5",
+    0
+   ],
+   "negative": [
+    "6",
+    0
+   ],
+   "vae": [
+    "4",
+    0
+   ],
+   "width": 512,
+   "height": 512,
+   "length": 33,
+   "batch_size": 1,
+   "start_image": [
+    "30",
+    0
+   ]
+  },
+  "class_type": "WanImageToVideo",
+  "_meta": {
+   "title": "Image to video conditioning"
+  }
+ },
+ "40": {
+  "inputs": {
+   "model": [
+    "12",
+    0
+   ],
+   "add_noise": "enable",
+   "noise_seed": 0,
+   "steps": 4,
+   "cfg": 1.0,
+   "sampler_name": "ddim",
+   "scheduler": "simple",
+   "positive": [
+    "31",
+    0
+   ],
+   "negative": [
+    "31",
+    1
+   ],
+   "latent_image": [
+    "31",
+    2
+   ],
+   "start_at_step": 0,
+   "end_at_step": 2,
+   "return_with_leftover_noise": "enable"
+  },
+  "class_type": "KSamplerAdvanced",
+  "_meta": {
+   "title": "Sample: high-noise expert (steps 0-2)"
+  }
+ },
+ "41": {
+  "inputs": {
+   "model": [
+    "22",
+    0
+   ],
+   "add_noise": "disable",
+   "noise_seed": 0,
+   "steps": 4,
+   "cfg": 1.0,
+   "sampler_name": "ddim",
+   "scheduler": "simple",
+   "positive": [
+    "31",
+    0
+   ],
+   "negative": [
+    "31",
+    1
+   ],
+   "latent_image": [
+    "40",
+    0
+   ],
+   "start_at_step": 2,
+   "end_at_step": 4,
+   "return_with_leftover_noise": "disable"
+  },
+  "class_type": "KSamplerAdvanced",
+  "_meta": {
+   "title": "Sample: low-noise expert (steps 2-4)"
+  }
+ },
+ "42": {
+  "inputs": {
+   "samples": [
+    "41",
+    0
+   ],
+   "vae": [
+    "4",
+    0
+   ]
+  },
+  "class_type": "VAEDecode",
+  "_meta": {
+   "title": "Decode frames"
+  }
+ },
+ "43": {
+  "inputs": {
+   "filename_prefix": "aivid/frames/f",
+   "images": [
+    "42",
+    0
+   ]
+  },
+  "class_type": "SaveImage",
+  "_meta": {
+   "title": "Save frames (PNG)"
+  }
+ },
+ "50": {
+  "inputs": {
+   "bg_removal_name": "birefnet.safetensors"
+  },
+  "class_type": "LoadBackgroundRemovalModel",
+  "_meta": {
+   "title": "BiRefNet"
+  }
+ },
+ "51": {
+  "inputs": {
+   "bg_removal_model": [
+    "50",
+    0
+   ],
+   "image": [
+    "42",
+    0
+   ]
+  },
+  "class_type": "RemoveBackground",
+  "_meta": {
+   "title": "Cut out every frame"
+  }
+ },
+ "53": {
+  "inputs": {
+   "mask": [
+    "51",
+    0
+   ]
+  },
+  "class_type": "InvertMask",
+  "_meta": {
+   "title": "Invert"
+  }
+ },
+ "54": {
+  "inputs": {
+   "image": [
+    "42",
+    0
+   ],
+   "alpha": [
+    "53",
+    0
+   ]
+  },
+  "class_type": "JoinImageWithAlpha",
+  "_meta": {
+   "title": "Add alpha"
+  }
+ },
+ "55": {
+  "inputs": {
+   "filename_prefix": "aivid/rgba/f",
+   "images": [
+    "54",
+    0
+   ]
+  },
+  "class_type": "SaveImage",
+  "_meta": {
+   "title": "Save RGBA frames"
+  }
+ }
+}

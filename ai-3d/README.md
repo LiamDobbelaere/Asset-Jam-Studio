@@ -1,4 +1,4 @@
-# ai-3d: text → game-ready 3D props, world textures and 2D sprites (local, RTX 2080 / 8 GB)
+# ai-3d: text → game-ready 3D props, world textures, 2D sprites and pixel art (local, RTX 2080 / 8 GB)
 
 Local pipeline that turns a text prompt into a textured, UV-unwrapped GLB with PBR maps
 (base color, metallic, roughness, normal, ambient occlusion). Everything runs on the GPU in
@@ -12,6 +12,9 @@ ComfyUI with no compiled CUDA extensions.
 | Image → shape + PBR texture | **Pixal3D** (default) or TRELLIS.2 (int8) | MIT / MIT | switch with `--model` |
 | Post-processing | ComfyUI mesh nodes | GPL-3 (ComfyUI) | remesh, decimate, UV unwrap, bake |
 | 2D sprite edit / pose / generation | **FLUX.2 [klein] 4B** (fp8) + the same Qwen3-4B encoder | Apache-2.0 | `sprite.bat`, 4 steps, ~30 s per sprite |
+| Pixel art stills | FLUX.2 klein 4B + two **pixel-art LoRAs** (Limbicnation sprite LoRA, adirik scene LoRA), then grid + palette snapping | Apache-2.0 (LoRAs trained on CC0 / free-to-use pixel art) | `pixel.bat`, ~15 s per sprite, ~50 s per scene |
+| Walk-cycle sprite sheets | FLUX.2 klein base 4B + svntax-dev's **4-walk sprite-sheet LoRA**: one 32 px character, 4x4 sheet (3 walk frames x 4 directions + 4 poses), snapped, keyed and split | Apache-2.0 (LoRA data CC-BY 4.0) | `pixel.bat --sheet`, ~1 min |
+| Animated pixel art from a still | **Wan 2.2 I2V 14B** (4-bit GGUF, both experts) + lightx2v 4-step LoRAs + styly-agents' **pixel-animate LoRA**, BiRefNet per frame, frames re-pixelized with the still's palette (`setup_pixel_anim.ps1`, ~21 GB); `--engine wan5b` = the ai-vid 5B model without a pixel LoRA (weak) | Apache-2.0 | `pixel.bat --animate`, ~2 min warm, ~3.5 min cold |
 
 Why these: the strongest-texturing open alternative, Hunyuan3D 2.x, is excluded for the EU in
 its license and its paint stage needs ~21 GB VRAM. TRELLIS.2 upstream needs 24 GB and Linux,
@@ -33,6 +36,7 @@ the download. With `CIVITAI_TOKEN` set in the environment it also fetches the op
 ```
 setup.ps1                     one-time install (ComfyUI, venv, patch, workflows, models)
 setup_paint.ps1               optional: IP-Adapter nodes + the SDXL models paint.bat uses (~12 GB)
+setup_pixel_anim.ps1          optional: ComfyUI-GGUF + Wan 2.2 14B GGUF, lightx2v and pixel-animate LoRAs for pixel.bat --animate (~21 GB)
 patches/                      local ComfyUI patches applied by setup.ps1
 custom_nodes/ai3d_seamless/   our ComfyUI nodes: seamless tiling for Z-Image (installed by setup.ps1)
 custom_nodes/ai3d_project/    our ComfyUI node: projects the reference picture onto Pixal3D meshes (installed by setup.ps1)
@@ -40,10 +44,14 @@ start_comfyui.bat             start the server (http://127.0.0.1:8188)
 generate.bat "prompt" [...]   command-line text → GLB
 texture.bat "prompt" [...]    command-line text → seamless world texture PNG (walls, floors, ground)
 sprite.bat "prompt" [...]     command-line 2D sprite edit / new pose from references / text → transparent PNG
+pixel.bat "prompt" [...]      command-line pixel art: text / sprite → PNG at its real pixel size; --sheet → 4x4 walk-cycle sheet; --animate still.png → Wan 2.2 14B + pixel LoRA animation
 paint.bat model.glb pic.png "prompt"   paint a modelled prop from its reference picture (SDXL from part-colour renders)
 scripts/generate.py           the 3D CLI (queues the API workflow, waits, prints paths)
 scripts/texture.py            the texture CLI
 scripts/sprite.py             the 2D sprite CLI (FLUX.2 klein)
+scripts/pixel.py              the pixel-art CLI: klein + LoRA stills, grid/palette snapping, 4x4 walk sheets, Wan 2.2 animation of a still
+scripts/build_pixel_wan_workflow.py   regenerates workflows/pixel_wan14_api.json (Wan 2.2 14B GGUF + pixel-animate LoRA)
+scripts/download_pixel_anim_models.py  model downloader used by setup_pixel_anim.ps1
 scripts/prop_kit.py           Blender modelling helpers for props written as scripts (box, lathe, tube, export)
 scripts/paint.py              the paint CLI: mask, camera fit, guides, one SDXL img2img per view, projection, FBX
 scripts/paint_fit.py          finds the picture's camera by matching the model's silhouette to its mask
@@ -61,7 +69,8 @@ scripts/build_sprite_workflow.py    same for the sprite_edit workflow files (use
 workflows/text_to_3d_gameasset.json        UI workflow, low-poly game-asset preset (in ComfyUI's sidebar)
 workflows/text_to_3d_zimage_pixal3d.json   UI workflow, full-detail preset
 workflows/text_to_texture.json             UI workflow, seamless hand-painted world texture
-workflows/sprite_edit.json                 UI workflow, FLUX.2 klein sprite edit with up to 3 reference images
+workflows/sprite_edit.json                 UI workflow, FLUX.2 klein sprite edit with up to 3 reference images (+ a bypassed LoRA node pixel.py uses)
+workflows/pixel_wan14_api.json             API workflow, Wan 2.2 14B GGUF image-to-video with the pixel-animate LoRA (pixel.py --animate)
 workflows/*_api.json                       API-format exports of the same workflows, used by the CLIs
 scripts/glb_to_fbx.py         Blender script: GLB -> Unity-ready FBX + diffuse PNG
 scripts/compare_render.py     Blender script: render a generated FBX next to a prop from your own .blend
@@ -69,12 +78,13 @@ scripts/download_models.py    model downloader used by setup.ps1
 assets/                       generated FBX + PNG game assets
 assets/textures/              generated world textures
 assets/sprites/               generated RGBA sprites
+assets/pixel/                 pixel art: <Name>.png stills, <Name>/ sprite-sheet and animation folders (sheet, gifs, json, frames)
 ComfyUI/                      ComfyUI 0.42 + .venv (Python 3.12, torch 2.14 cu130), git-ignored
 ComfyUI/models/               ~35 GB of weights (see below)
 ComfyUI/output/3d/            generated GLB files (ComfyUI_00001.glb, ...)
 ComfyUI/output/text_to_3d/    generated reference images
 ComfyUI/output/texture/       generated textures (tile, preview2x2; raw and tile_repaint with --tile crossfade)
-ComfyUI/output/sprite/        generated sprites (raw = painted on white, rgba = cut out)
+ComfyUI/output/sprite/        generated sprites and pixel-art pictures before snapping (raw = painted on white, rgba = cut out)
 ComfyUI/output/paint/         paint.bat work folders: mask, camera fit, guides, painted views
 assets/modelled/<Name>/       Claude's modelling folder per prop: <Name>.py, <Name>.glb (clay), reference.png, check_N.png, claude.jsonl
 ```
@@ -445,6 +455,101 @@ when the silhouette did not change.
 UI workflow: **sprite_edit** in the Workflows sidebar (SOURCE = image 1, REF 2/3 bypassed until used). It is
 generated by `scripts/build_sprite_workflow.py`, so edit that script rather than the JSON.
 
+## Pixel art (stills and animated sprite sheets)
+
+`pixel.bat` makes real pixel art: a PNG at its actual pixel size (64×64 for a character, 128×96 for a room), with
+every pixel on the grid and at most N colours, plus animated sprite sheets from a still.
+
+**Stills.** The same FLUX.2 [klein] 4B as the sprite flow draws the picture, with one of two pixel-art LoRAs
+(both Apache-2.0, ~350 MB each, fetched by `scripts/download_models.py`): `sprite` = Limbicnation's character LoRA
+on the distilled model (trained on 1,010 CC0 sprites at 512², 4 steps), `scene` = adirik's LoRA on the base
+model (463 free-to-use 64×64 scenes and objects upsampled to 512², trigger `PXART4`, 20 steps with CFG). The
+canvas is a whole number of blocks (64 px art at ×8 = 512², 128×96 at ×4 = 512×384), characters are cut out by
+BiRefNet, and then the picture is **snapped**: one sample per block at the grid offset that best explains the
+diffusion output (its own pixel grid is never quite aligned with ours; `--sample box` averages instead), alpha
+thresholded, and the opaque colours quantized to a palette (`--colors`, default 32: Pillow median cut refined with
+k-means, no dithering). The palette and size are written into the PNG (`pixel` text chunk) so the animation step
+can reuse them. `--kind none` draws without a LoRA for comparison.
+
+```bash
+pixel.bat "a knight in blue armour with a red plume on his helmet, holding a sword, idle pose, side view" --name Knight
+```
+
+```bash
+pixel.bat "the character from image 1" --image assets\sprites\Hero.png --width 48 --name HeroPixel
+```
+
+```bash
+pixel.bat "a cosy medieval tavern interior with a stone fireplace, wooden tables and barrels" --kind scene --width 128 --height 96 --name Tavern
+```
+
+Results go to `assets/pixel/<Name>.png`. Options: `--kind sprite|scene|none`, `--width`/`--height` (art pixels;
+default 64², scene 128², or the source's aspect), `--colors` (0 keeps all), `--sample center|box`, `--scale`
+(block size; default auto ≈ 512 px canvas), `--model auto|distilled|base`, `--lora-strength`, `--alpha auto|keep|none`
+(default: cut out for sprites, opaque for scenes), `--steps`, `--cfg`, `--negative`, `--seed`, `--raw`, `--dump`.
+View the PNG with nearest-neighbour scaling (the studio does; in Unity set the sprite's filter mode to Point).
+Measured on the 2080: a 64² sprite in ~15 s warm (65 s with the model load), a 128×96 scene in ~50 s. The
+distilled model drifts colours when redrawing an existing sprite (a dusty green bush came back bright green):
+name the colours in the prompt or use `--model base`.
+
+**Walk-cycle sprite sheets** (`--sheet`). The reliable way to animated pixel characters on this card is to draw
+the whole animation as one picture: svntax-dev's 4-walk LoRA (Apache-2.0, trained on sheets built from George
+Bailey's CC-BY 16x16 template) makes FLUX.2 klein *base* draw a 512² sheet of one 32 px character, a 4×4 grid
+of 3 walk frames facing down / left / right / up plus arms up, jump left, jump right and lying down. Because every
+frame comes out of the same image, the character is consistent across all 16 cells, which no video model managed
+here. The sheet is snapped to 128×128 (×4 blocks, the same grid-offset search as stills), the background is
+flood-filled to transparent from the edges (enclosed background-coloured pixels such as eyes stay), and it is split
+into named cells with a GIF per walk cycle (`0-1-2-1`).
+
+```bash
+pixel.bat --sheet "a medieval knight wearing blue metal armor and a helmet with a red plume, holding a sword" --name Knight
+```
+
+```bash
+pixel.bat --sheet --image assets\pixel\Knight.png "a knight" --name KnightSheet
+```
+
+Outputs in `assets/pixel/<Name>/`: `<Name>_sheet.png` (128², RGBA), `frames/<Name>_<cell>.png` (`down_0..2`, `arms_up`,
+`left_0..2`, `jump_left`, `right_0..2`, `jump_right`, `up_0..2`, `lie_down`), `<Name>_walk_<dir>.gif`, `<Name>.json`
+(cell map, animations, palette, seed) and `<Name>_raw.png`. Options: `--image` (a pixel still, a sprite, any
+picture = image 1; the description alone keeps details such as a plume better, a picture keeps the overall look;
+the LoRA leans humanoid: a slime came back as a green person), `--colors`, `--fps` (GIFs, default 6), `--seed`,
+`--steps` (20), `--cfg` (5), `--lora-strength`, `--raw`. About 60 s on the 2080. Limits: 32 px characters only
+(the LoRA's training size), three walk frames per direction, occasional cut-off hats or inconsistent back views
+(the author's own caveats); regenerate with another seed when a row is off.
+
+**Animating a still with a video model** (`--animate`). `--animate still.png "what moves"` hands the still to an
+image-to-video model and re-pixelizes the result. The engine that works is **`wan14`** (default when installed):
+Wan 2.2 I2V A14B, both experts as Q4_K_S GGUF files through city96's ComfyUI-GGUF node, the lightx2v 4-step
+distillation LoRAs and styly-agents' pixel-animate LoRA (rank 256, trained on 226 pixel sprite animations: idles,
+walks, attacks, spell and explosion effects; Apache-2.0), wired as that LoRA's own workflow: shift 5, 2 + 2 steps,
+CFG 1, ddim. `setup_pixel_anim.ps1` installs the node and fetches the ~21 GB. The still is enlarged nearest-neighbour
+(the LoRA saw real pixel animations) and used as the first frame; there is no end frame. Measured on the 2080:
+33 frames at 512² in 206 s and 45 frames in 198 s, peak 7.7 GB VRAM; the time goes into streaming the two 8.7 GB
+experts from RAM, so warm runs are no faster. The frames come back as crisp pixel art in the still's colours with
+no flicker, and the character stays the same; the motion is modest (with a walk-cycle prompt and 45 frames the
+knight stepped his legs and swung the sword, short of a full stride), which is why walk cycles belong to `--sheet`
+and `--animate` suits idles, effects and small gestures. `--engine wan5b` keeps the earlier route (Wan 2.2 TI2V-5B from ai-vid, no pixel LoRA,
+Lanczos-upscaled still, optional `--loop pin|pingpong`); it flickered and drifted in every test and is only kept
+for comparison. Every decoded frame is cut out by BiRefNet, then `--frames`
+(8) frames are picked evenly from the clip and re-pixelized at the still's size with the still's own palette, so
+all frames share one grid and one set of colours (no flicker). Outputs in `assets/pixel/<Name>/`: `<Name>_sheet.png`
+(frames side by side), `<Name>.gif` (preview, `--preview-scale` 4), `<Name>.json` (frame size, count, `--fps`,
+palette, seed), `frames/<Name>_NN.png` and `<Name>_wan.mp4` (the raw clip, for judging the motion).
+
+```bash
+pixel.bat --animate assets\pixel\Knight.png "the knight walks in place facing right, legs stepping, arms swinging" --frames 8 --fps 8 --seconds 1.5 --name KnightWalk
+```
+
+`--seconds` (wan14 default 1.33 = 33 frames; 4k+1 frames at 24 fps) is the clip the `--frames` are picked from.
+Outputs as before: `<Name>_sheet.png` (frames side by side), `<Name>.gif`, `<Name>.json`, `frames/` and
+`<Name>_wan.mp4` (the raw clip: look at it before judging the frames). Any PNG can be animated: a big picture
+is pixelized first (`--width`/`--height`/`--colors`). Other options: `--lora-strength` (pixel-animate LoRA),
+`--steps` (4), `--cfg` (1), `--upscale nearest|smooth`, `--negative`, `--seed`.
+
+The studio's **Pixel art** page wraps all three (`kind pixel`, `pixel_sheet` and, folded away below them,
+`pixel_anim` with an engine switch; a still's **Walk-cycle sheet** button fills the sheet form with it).
+
 ## Local ComfyUI patches (needed on Turing / RTX 20-series)
 
 Two small edits in `ComfyUI/`, kept as `patches/comfyui-turing-fp16.patch` and applied by setup.ps1,
@@ -495,6 +600,7 @@ Downloaded from the Comfy-Org repackaged repos on Hugging Face into `ComfyUI/mod
 - `clip_vision/dino_v3_L_naf_fp32.safetensors`
 - `background_removal/birefnet.safetensors`
 - `geometry_estimation/moge_2_vitl_normal_fp16.safetensors`
+- `loras/pixel_sprite_klein4b.safetensors` (310 MB, Limbicnation/pixel-art-lora), `loras/pixel_scene_klein4b.safetensors` (353 MB, adirik/pixel-art-lora-flux.2-klein-4B) and `loras/pixel_4walk_klein4b_base.safetensors` (88 MB, svntax-dev/pixel_spritesheet_4walk_small_lora_v1), all Apache-2.0, for `pixel.bat`
 - optional, from Civitai with `CIVITAI_TOKEN`: `loras/StylizedTexture_ZIT.safetensors` (172 MB)
 
 ## Updating

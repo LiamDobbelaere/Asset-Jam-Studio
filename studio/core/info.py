@@ -46,6 +46,22 @@ def video_models_present():
     return all(os.path.isfile(os.path.join(models, d, f)) for d, f in VIDEO_WEIGHTS)
 
 
+def pixel_loras_present():
+    import pixel as genpixel   # ai-3d/scripts
+    loras = os.path.join(paths.COMFY, "models", "loras")
+    return all(os.path.isfile(os.path.join(loras, k["lora"])) for k in genpixel.KINDS.values() if k["lora"])
+
+
+def wan14_present():
+    import pixel as genpixel
+    return genpixel.wan14_present()
+
+
+def sheet_lora_present():
+    import pixel as genpixel
+    return os.path.isfile(os.path.join(paths.COMFY, "models", "loras", genpixel.SHEET_LORA))
+
+
 def video_info():
     """Shot-list presets from ai-vid/shots plus whether ffmpeg and the Wan weights are there."""
     presets = []
@@ -73,6 +89,10 @@ def readiness(comfy_alive):
         "music": {"installed": mus["ready"], "lms": mus["lms"], "dits": mus["dits"]},
         "sfx": {"installed": sfx_readiness()["ready"]},
         "video": {"installed": os.path.isfile(paths.COMFY_PY) and video_models_present(), "ffmpeg": os.path.isfile(ffmpeg_path())},
+        "pixel": {"installed": os.path.isfile(paths.COMFY_PY) and pixel_loras_present(), "sheet": sheet_lora_present(), "animation": video_models_present(),
+                  "wan14": wan14_present(),
+                  "note": "stills and sheets need the three pixel-art LoRAs (ai-3d/scripts/download_models.py); pixel_anim needs engine wan14 "
+                          "(ai-3d/setup_pixel_anim.ps1: ComfyUI-GGUF + Wan 2.2 14B) or wan5b (ai-vid/setup.ps1)"},
         "prop": {"installed": genpaint.readiness()["ready"] and bool(prop_model.claude_cli()),
                  "note": "text -> Claude-modelled + painted prop (kind prop): needs paint plus the Claude Code CLI, logged in"},
         "paint": {"installed": genpaint.readiness()["ready"],

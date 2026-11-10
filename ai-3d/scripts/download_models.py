@@ -23,6 +23,12 @@ jobs=[
  ("black-forest-labs/FLUX.2-klein-4b-fp8","flux-2-klein-4b-fp8.safetensors","diffusion_models/flux-2-klein-4b-fp8.safetensors"),
  ("black-forest-labs/FLUX.2-klein-base-4b-fp8","flux-2-klein-base-4b-fp8.safetensors","diffusion_models/flux-2-klein-base-4b-fp8.safetensors"),
  ("Comfy-Org/Flux-2-Klein-4B","split_files/vae/flux2-vae.safetensors","vae/flux2-vae.safetensors"),
+ # pixel art (pixel.bat): two klein 4B LoRAs, Apache-2.0. sprite = Limbicnation (distilled klein, CC0 character sprites),
+ # scene = adirik (base klein, 64x64 scenes and objects, trigger PXART4)
+ ("Limbicnation/pixel-art-lora","pytorch_lora_weights.comfyui.safetensors","loras/pixel_sprite_klein4b.safetensors"),
+ ("adirik/pixel-art-lora-flux.2-klein-4B","pixelart_lora.safetensors","loras/pixel_scene_klein4b.safetensors"),
+ # pixel.bat --sheet: svntax-dev's 4-direction walk sprite-sheet LoRA (base klein, 32 px characters in a 4x4 sheet, Apache-2.0)
+ ("svntax-dev/pixel_spritesheet_4walk_small_lora_v1","pixel_4walk_small_flux2_klein_base_4b_v1.safetensors","loras/pixel_4walk_klein4b_base.safetensors"),
 ]
 for repo,fn,dest in jobs:
     out=os.path.join(M,dest)

@@ -1,7 +1,8 @@
 """Builds workflows/sprite_edit_api.json (used by sprite.py) and workflows/sprite_edit.json (UI workflow for the
 ComfyUI sidebar) from one node graph, so the two can't drift apart.
 
-Graph: FLUX.2 [klein] 4B image editing. The source sprite (LoadImage "SOURCE") plus up to two extra reference
+Graph: FLUX.2 [klein] 4B image editing. An optional LoRA (LoraLoaderModelOnly, bypassed in the UI) sits between the
+model loader and the guiders: pixel.py loads the pixel-art LoRAs through it. The source sprite (LoadImage "SOURCE") plus up to two extra reference
 images ("REF 2", "REF 3") are VAE-encoded and attached to the conditioning with ReferenceLatent, so the prompt can
 say "the character in image 1 sitting on the chair from image 2". The distilled model samples in 4 steps at CFG 1
 (negative = zeroed conditioning); the base model uses 20 steps at CFG 5 with a real negative prompt. The output is
@@ -26,6 +27,7 @@ MODEL = "flux-2-klein-4b-fp8.safetensors"            # distilled, 4 steps
 MODEL_BASE = "flux-2-klein-base-4b-fp8.safetensors"  # undistilled, 20 steps, CFG 5
 CLIP = "qwen_3_4b_fp8_mixed.safetensors"             # same Qwen3-4B encoder as Z-Image-Turbo
 VAE = "flux2-vae.safetensors"
+LORA = "pixel_sprite_klein4b.safetensors"            # bypassed in the UI; sprite.py wires it in when --lora is given
 PROMPT = ("Redraw the character from image 1 sitting on the office chair from image 2, facing the camera, "
           "southeast isometric view, same character design, same art style, same line weight and colours, "
           "plain white background")
@@ -49,6 +51,7 @@ def link(nid, idx=0):
 node("1", "UNETLoader", "FLUX.2 klein 4B (distilled fp8)", unet_name=MODEL, weight_dtype="default")
 node("2", "CLIPLoader", "Qwen3-4B text encoder", clip_name=CLIP, type="flux2", device="default")
 node("3", "VAELoader", "FLUX.2 VAE", vae_name=VAE)
+node("4", "LoraLoaderModelOnly", "LoRA (optional; pixel.py: pixel-art LoRAs)", model=link("1"), lora_name=LORA, strength_model=1.0)
 
 # --- prompt ------------------------------------------------------------------------------------------
 node("5", "CLIPTextEncode", "PROMPT (what the finished sprite shows)", text=PROMPT, clip=link("2"))
@@ -83,7 +86,7 @@ node("40", "EmptyFlux2LatentImage", "Canvas (source size)", width=link("12", 0),
 node("41", "Flux2Scheduler", "Sigmas", steps=4, width=link("12", 0), height=link("12", 1))
 node("42", "KSamplerSelect", sampler_name="euler")
 node("43", "RandomNoise", noise_seed=0)
-node("44", "CFGGuider", "Guider (distilled: CFG 1)", cfg=1.0, model=link("1"), positive=link("33"), negative=link("34"))
+node("44", "CFGGuider", "Guider (distilled: CFG 1)", cfg=1.0, model=link("4"), positive=link("33"), negative=link("34"))
 node("45", "SamplerCustomAdvanced", "Sample (edit)", noise=link("43"), guider=link("44"), sampler=link("42"), sigmas=link("41"), latent_image=link("40"))
 node("46", "VAEDecode", "Decode", samples=link("45"), vae=link("3"))
 node("47", "SaveImage", "Save painted result", filename_prefix="sprite/raw", images=link("46"))
@@ -99,7 +102,7 @@ UI_NODES = list(order)
 # --- text-to-image branch (API graph only; sprite.py uses it when no --image is given) -------------------
 node("60", "EmptyFlux2LatentImage", "Canvas (text to image)", width=768, height=1024, batch_size=1)
 node("61", "Flux2Scheduler", "Sigmas (text to image)", steps=4, width=768, height=1024)
-node("62", "CFGGuider", "Guider (text to image)", cfg=1.0, model=link("1"), positive=link("5"), negative=link("6"))
+node("62", "CFGGuider", "Guider (text to image)", cfg=1.0, model=link("4"), positive=link("5"), negative=link("6"))
 node("63", "SamplerCustomAdvanced", "Sample (text to image)", noise=link("43"), guider=link("62"), sampler=link("42"), sigmas=link("61"), latent_image=link("60"))
 node("64", "VAEDecode", "Decode (text to image)", samples=link("63"), vae=link("3"))
 node("65", "SaveImage", "Save painted result (text to image)", filename_prefix="sprite/raw", images=link("64"))
@@ -108,7 +111,7 @@ node("68", "InvertMask", "Invert (text to image)", mask=link("66"))
 node("69", "JoinImageWithAlpha", "Add alpha (text to image)", image=link("64"), alpha=link("68"))
 node("67", "SaveImage", "Save RGBA sprite (text to image)", filename_prefix="sprite/rgba", images=link("69"))
 
-COLUMNS = {"1": 0, "2": 0, "3": 0, "5": 1, "6": 2, "7": 1,
+COLUMNS = {"1": 0, "2": 0, "3": 0, "4": 1, "5": 1, "6": 2, "7": 1,
            "10": 0, "11": 1, "12": 2, "13": 2, "14": 3, "15": 3, "16": 3,
            "20": 0, "21": 1, "22": 2, "23": 4, "24": 4, "25": 4,
            "30": 0, "31": 1, "32": 2, "33": 5, "34": 5, "35": 5,
@@ -121,7 +124,7 @@ GROUPS = [
 ]
 # In the UI workflow the guider reads the source-only chain; refs 2/3 and the base-model negative chain are bypassed.
 UI_OVERRIDES = {"44": {"positive": link("14"), "negative": link("15")}}
-BYPASS = {"7", "16", "20", "21", "22", "23", "24", "25", "30", "31", "32", "33", "34", "35"}
+BYPASS = {"4", "7", "16", "20", "21", "22", "23", "24", "25", "30", "31", "32", "33", "34", "35"}
 
 if __name__ == "__main__":
     out = os.path.join(ROOT, "workflows")
