@@ -29,6 +29,20 @@
    "title": "FLUX.2 VAE"
   }
  },
+ "4": {
+  "inputs": {
+   "model": [
+    "1",
+    0
+   ],
+   "lora_name": "pixel_sprite_klein4b.safetensors",
+   "strength_model": 1.0
+  },
+  "class_type": "LoraLoaderModelOnly",
+  "_meta": {
+   "title": "LoRA (optional; pixel.py: pixel-art LoRAs)"
+  }
+ },
  "5": {
   "inputs": {
    "text": "Redraw the character from image 1 sitting on the office chair from image 2, facing the camera, southeast isometric view, same character design, same art style, same line weight and colours, plain white background",
@@ -402,7 +416,7 @@
   "inputs": {
    "cfg": 1.0,
    "model": [
-    "1",
+    "4",
     0
    ],
    "positive": [
@@ -568,7 +582,7 @@
   "inputs": {
    "cfg": 1.0,
    "model": [
-    "1",
+    "4",
     0
    ],
    "positive": [

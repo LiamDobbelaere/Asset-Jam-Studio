@@ -4,7 +4,7 @@ import time
 
 import json
 
-from .paths import ASSETS, MUS_OUTPUT, SFX_OUTPUT, SPRITES, TEXTURES, THUMBS, VOC_OUTPUT, COMFY_OUTPUT, file_url
+from .paths import ASSETS, MUS_OUTPUT, PIXELS, SFX_OUTPUT, SPRITES, TEXTURES, THUMBS, VOC_OUTPUT, COMFY_OUTPUT, file_url
 from .voice import wav_duration
 
 import texture as gentex   # ai-3d/scripts: the style suffixes the CLIs append
@@ -129,6 +129,52 @@ def textures(store):
 
 def sprites(store):
     return _pngs(SPRITES, store, "sprite")
+
+
+def pixels(store):
+    """ai-3d/assets/pixel/: stills (<Name>.png, with the pixel chunk pixel.py writes) and animations (<Name>/<Name>.json)."""
+    idx = store.by_output_path()
+    out = []
+    if os.path.isdir(PIXELS):
+        for fn in os.listdir(PIXELS):
+            p = os.path.join(PIXELS, fn)
+            if fn.lower().endswith(".png") and os.path.isfile(p):
+                e = _entry(p, idx.get(os.path.abspath(p)))
+                e["kind"] = "pixel"
+                try:
+                    from PIL import Image
+                    im = Image.open(p)
+                    e["pixel"] = json.loads((getattr(im, "text", None) or {}).get("pixel", "null")) or {"width": im.width, "height": im.height}
+                except Exception:
+                    e["pixel"] = None
+                out.append(e)
+            elif os.path.isdir(p) and os.path.isfile(os.path.join(p, fn + ".json")):
+                try:
+                    meta = json.load(open(os.path.join(p, fn + ".json"), encoding="utf-8"))
+                except Exception:
+                    meta = {}
+                sheet, gif, mp4 = os.path.join(p, fn + "_sheet.png"), os.path.join(p, fn + ".gif"), os.path.join(p, fn + "_wan.mp4")
+                fdir = os.path.join(p, "frames")
+                frames = [os.path.join(fdir, f) for f in sorted(os.listdir(fdir))] if os.path.isdir(fdir) else []
+                job = idx.get(os.path.abspath(sheet))
+                is_sheet = meta.get("type") == "sheet"
+                e = {"kind": "pixel_sheet" if is_sheet else "pixel_anim", "name": fn, "path": p, "file": fn,
+                     "url": file_url(sheet) if is_sheet and os.path.isfile(sheet) else file_url(gif) if os.path.isfile(gif) else None,
+                     "sheet": file_url(sheet) if os.path.isfile(sheet) else None, "sheet_path": sheet if os.path.isfile(sheet) else None,
+                     "gif": file_url(gif) if os.path.isfile(gif) else None, "mp4": file_url(mp4) if os.path.isfile(mp4) else None,
+                     "frames": [{"name": os.path.splitext(os.path.basename(f))[0][len(fn) + 1:], "path": f, "url": file_url(f)} for f in frames], "meta": meta,
+                     "mtime": os.stat(sheet if os.path.isfile(sheet) else p).st_mtime, "job": None}
+                if is_sheet:
+                    raw = os.path.join(p, fn + "_raw.png")
+                    e["raw"] = file_url(raw) if os.path.isfile(raw) else None
+                    e["gifs"] = [{"name": a, "url": file_url(os.path.join(p, f"{fn}_{a}.gif"))} for a in (meta.get("animations") or {})
+                                 if os.path.isfile(os.path.join(p, f"{fn}_{a}.gif"))]
+                if job:
+                    e["job"] = {"id": job.id, "params": job.params, "meta": job.meta, "outputs": job.outputs, "status": job.status,
+                                "created": job.created, "parent": job.parent, "intermediates": job.intermediates}
+                out.append(e)
+    out.sort(key=lambda e: e["mtime"], reverse=True)
+    return out
 
 
 def voice_takes(store):

@@ -1,7 +1,7 @@
 # studio: the Asset Jam Studio web front-end and API
 
 One page per flow, a single job queue, live progress, and the same queue over HTTP for scripts and for Claude.
-Wraps the command-line tools in `ai-3d/` (3D props, world textures, 2D sprites), `ai-voc/` (voice lines),
+Wraps the command-line tools in `ai-3d/` (3D props, world textures, 2D sprites, pixel art), `ai-voc/` (voice lines),
 `ai-mus/` (music), `ai-sfx/` (sound effects), `ai-vid/` (videos) and `ai-anim/` (rigged, animated characters) without replacing them: the
 studio imports the same prompt builders the `.bat` files use, so a run from the browser is the same run as
 from the terminal.
@@ -27,6 +27,7 @@ the browser's localStorage.
 | Overview | queue, system state, ComfyUI log | cancel or forget any job |
 | 3D Models | text → reference image → Pixal3D/TRELLIS.2 → GLB (+ FBX via Blender) | **Reference image only** first, check it, then **Build the 3D model from this image** (same seed, so ComfyUI serves the cached picture); or a full run; or upload your own reference picture (skips text-to-image). Intermediate images and meshes appear as nodes finish; sampler previews stream live. Library: every GLB/FBX in `ai-3d/assets` with a three.js viewer (wireframe, tri count), reference, diffuse, downloads, and **Reuse settings**. |
 | Textures | text → seamless hand-painted texture | native / cross-fade / none tiling, LoRA strength, optional **reference texture** with a strength slider (img2img from an uploaded or library texture), 1×/2×2/4×4 repeat preview. |
+| Pixel art | FLUX.2 klein + pixel-art LoRA → grid + palette snapping; Wan 2.2 animation → sprite sheet | **Still** form: prompt, kind (sprite / scene / no LoRA), size in art pixels, colours, optional source picture + references, transparency; results shown pixelated with the palette; **Animate this** / **Use as source**. **Walk-cycle sprite sheet** form: describe the character and / or pick a picture of it; result: the 128×128 sheet, a GIF per walk direction, the 16 named frames, downloads. A folded-away **Animate a still** form drives the video route (engine wan14: Wan 2.2 14B GGUF + pixel-animate LoRA, after `ai-3d\setup_pixel_anim.ps1`; or the weaker wan5b). Library: `ai-3d/assets/pixel` stills, sheet and animation folders. |
 | Sprites | FLUX.2 klein edit / pose / text-to-sprite | source sprite + up to two references (upload, or pick from the library), distilled or base model, alpha mode, canvas size. Results on a checkerboard with **Use as source** / **Add as reference** for quick iteration. |
 | Voice | Qwen3-TTS zero-shot clone | voices and moods are read from `ai-voc/voices/` (play the reference, see its transcript), several takes per line, seed, sampling knobs, fine-tuned checkpoints if present, a cheat sheet of what punctuation does. Library: every wav in `ai-voc/output` with date, length, line and seed. **Add voice** runs `prep_voice.py` on a folder of an actor's lines (or on dropped audio files) with the Whisper transcripts streaming into the log; the ⚙ manager on each voice lists every clip with a play button and an editable transcript, lets you fix `ref.txt`, and builds a mood reference from ticked clips. |
 | Video | shot list → Wan 2.2 clips + logo reveal → mp4 | presets from `ai-vid/shots/`; per shot: prompt, seconds, seed, **start/end frame** (none / previous shot's last frame / picture / generated keyframe with a reference), or a **logo reveal** (PNG, wordmark split, background). **Generate all**, **Keyframes only** (check the stills first), **Assemble existing clips** (new transitions / music), **Regenerate only this shot**. Live sampler preview; keyframes and last frames appear as they finish. Result: the final video, every clip (hover to play, ↻ redo with a new seed), keyframes. Library: every project in `ai-vid/output`. |
@@ -73,14 +74,14 @@ API.md                the HTTP API
 core/schema.py        every job kind with its parameters: validation, GET /api/schema, the CLI's flags, job titles
 core/jobs.py          Job records (studio/jobs/<id>.json), queue, worker thread, wait_for()
 core/comfy.py         ComfyUI client: prompt queueing, stdlib WebSocket for progress/previews, start/stop (log in comfy.log)
-core/flows.py         model3d / texture / sprite / voice / music / sfx / video / anim flows on top of the ai-* builders
+core/flows.py         model3d / texture / sprite / pixel / pixel_sheet / pixel_anim / voice / music / sfx / video / anim flows on top of the ai-* builders
 core/procworker.py    the JSON-lines worker-process protocol shared by voice, music, sfx and anim
 core/voice.py         voices + moods discovery, TTS worker process
 core/music.py         ACE-Step worker process, installed models, caption tips
 core/sfx.py           MOSS-SoundEffect worker process, readiness, prompt tips
 core/anim.py          rig + motion worker process (ai-anim/scripts/anim_worker.py), readiness checks, prompt tips
 core/info.py          3D presets, video presets, per-back-end readiness (GET /api/health)
-core/library.py       scans assets, textures, sprites, voice takes, music, sound effects, video projects and characters and joins them with job records
+core/library.py       scans assets, textures, sprites, pixel art, voice takes, music, sound effects, video projects and characters and joins them with job records
 web/                  index.html, app.js (vanilla), viewer.js (three.js GLB viewer), style.css
 jobs/, uploads/, comfy.log   job records, uploaded inputs, ComfyUI output (git-ignored)
 ```

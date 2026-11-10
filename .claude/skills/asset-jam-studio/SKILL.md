@@ -1,6 +1,6 @@
 ---
 name: asset-jam-studio
-description: Generate game assets with the local Asset Jam Studio (3D models, seamless textures, 2D sprites, voice lines, music, sound effects, videos, rigged + animated characters) through its HTTP API / CLI. Use whenever a task needs an art, audio or 3D asset that does not exist yet, or when the user mentions the studio, Asset Jam Studio, ai-3d, ai-voc, ai-mus, ai-vid or ai-anim.
+description: Generate game assets with the local Asset Jam Studio (3D models, seamless textures, 2D sprites, pixel art and walk-cycle sprite sheets, voice lines, music, sound effects, videos, rigged + animated characters) through its HTTP API / CLI. Use whenever a task needs an art, audio or 3D asset that does not exist yet, or when the user mentions the studio, Asset Jam Studio, ai-3d, ai-voc, ai-mus, ai-vid or ai-anim.
 ---
 
 # Asset Jam Studio as a tool
@@ -57,7 +57,7 @@ studio_cli.py cancel <job id>
      `wait` is a long poll: it returns as soon as the job finishes. Do not poll `status` in a loop.
 - Exit code 0 = `done`. 1 = the job ended `error` or `cancelled`: the JSON has `error` and `log_tail`; read them,
   fix the parameters, resubmit. 2 = the request was rejected (parameter message in `error`) or the studio is down.
-- Typical durations: texture 20-50 s, sprite 30 s-2 min, voice line 5-20 s (+20 s first load), music ~1 s per
+- Typical durations: texture 20-50 s, sprite 30 s-2 min, pixel still 15 s-1 min, pixel sprite sheet ~1 min, pixel animation (wan14) ~3.5 min, voice line 5-20 s (+20 s first load), music ~1 s per
   second of audio (+40 s first load), sound effect ~25 s per take (+20 s first load), 3D model 3 min (25 min for `detailed`), paint 2-3 min, modelled prop 5-20 min, rig 10 s + 10-30 s per clip,
   video ~40 s per second of footage. Set `--timeout` accordingly for `--wait`.
 
@@ -74,6 +74,8 @@ in `seed`: re-submitting with the same parameters and `--seed <n>` reproduces th
 | `paint` | `glb`, `fbx`, `diffuse`, `reference`, `views[]` | `ai-3d/assets/<Name>.glb` / `.fbx` / `Diffuse.png` |
 | `texture` | `texture` | `ai-3d/assets/textures/<Name>.png` |
 | `sprite` | `sprite` (RGBA PNG) | `ai-3d/assets/sprites/<Name>.png` |
+| `pixel` | `pixel` (RGBA PNG at its real pixel size: `width`, `height`, `colors`) | `ai-3d/assets/pixel/<Name>.png` |
+| `pixel_sheet` | `sheet` (128x128 RGBA), `frames[]` (16 named cells), `gifs[]` (4 walk cycles), `json` | `ai-3d/assets/pixel/<Name>/` |
 | `voice` | `files[]` (one wav per take) | `ai-voc/output/<voice>_<mood>_<slug>.wav` |
 | `music` | `files[]` (wav/ogg/flac, `meta.lm_bpm`) | `ai-mus/output/<Name>.wav` |
 | `sfx` | `files[]` (one wav/ogg/flac per take, 48 kHz mono) | `ai-sfx/output/<Name>.wav` (takes: `<Name>_1.wav`, ...) |
@@ -154,6 +156,26 @@ the result: `"the character from image 1 sitting on the chair from image 2, same
 colours"`, with `--ref_uploads '["chair.png"]'`. `--model base` for final frames (exact colours, 2 min),
 `distilled` (default) for iteration. Give `--width` and `--height` (multiples of 16) together when a pose needs
 more room. Sprite sheets: one job per pose, same seed and prompt phrasing, then assemble with Pillow.
+
+**pixel** (pixel art at its real pixel size: characters, items, tiles, rooms). `--prompt "a knight in blue armour
+with a red plume, holding a sword, idle pose, side view" --width 64 --height 64 --colors 32 --name Knight`.
+`--kind sprite` (default: character LoRA, cut out to RGBA) for characters, enemies, items; `--kind scene` for
+rooms, backgrounds and tiles (opaque, base model, ~1 min; `--width 128 --height 96`). An existing sprite becomes
+pixel art with `--image_upload <png>` and a prompt like "the character from image 1". The PNG is tiny (64×64):
+load it with nearest-neighbour filtering (three.js `NearestFilter`, Unity filter mode Point). Keep one
+`--colors` and one size per game for a consistent look; `meta.palette` in the result lists the colours.
+
+**pixel_sheet** (animated pixel characters: a 4x4 walk-cycle sheet of one 32 px character, consistent across
+all frames because it is drawn as one picture). `--prompt "a medieval knight wearing blue metal armor and a
+helmet with a red plume, holding a sword" --name Knight`; optionally `--image_upload <a pixel still or sprite>`
+(the description alone keeps details better; the LoRA leans humanoid). Outputs: `sheet` (128x128 RGBA; cells of
+32 px: `down_0..2`, `arms_up`, `left_0..2`, `jump_left`, `right_0..2`, `jump_right`, `up_0..2`, `lie_down`;
+the `json` has the cell map and the walk animations `0-1-2-1`), `frames[]`, `gifs[]`. In a game, slice the sheet
+with the JSON or use the frame PNGs; play walks at ~6 fps. Only 32 px characters; a bad row (cut-off hat, odd
+back view) means another `--seed`. `pixel_anim` animates a still with a video model (`--engine wan14`: Wan 2.2 14B + pixel-animate LoRA, needs
+`health` → `backends.pixel.wan14`; ~3.5 min; crisp and consistent, modest motion: idles, effects, small gestures,
+not full walk cycles): `--still_upload <pixel png> --prompt "the flame flickers" --frames 8 --fps 8`. Check
+`mp4` / a few `frames[]`. `--engine wan5b` is the weak fallback without the LoRA.
 
 **voice** (dialogue). `studio_cli.py voices` → names and moods. `--voice liam --mood upset --text "I missed
 the last train home... Oh! Hey, Sam."`. Full sentences; `...` pauses, `!` energy, `?` rising; the mood clip is

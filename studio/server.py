@@ -173,7 +173,7 @@ def api_job_preview(h, q, body, job_id):
     return None
 
 
-LIBRARIES = {"models": library.models, "textures": library.textures, "sprites": library.sprites, "voice": library.voice_takes,
+LIBRARIES = {"models": library.models, "textures": library.textures, "sprites": library.sprites, "pixels": library.pixels, "voice": library.voice_takes,
              "music": library.music_tracks, "sfx": library.sfx_sounds, "videos": library.videos, "characters": library.characters}
 
 

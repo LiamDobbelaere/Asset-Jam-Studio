@@ -70,8 +70,11 @@ def upload(name, data):
 
 def build_api(prompt, image=None, refs=(), model="distilled", steps=None, cfg=None, negative=NEGATIVE, seed=None,
               raw=False, width=None, height=None, megapixels=1.0, bg="#ffffff", alpha="auto", dump=False,
-              upload_prefix="sprite_in"):
+              upload_prefix="sprite_in", lora=None, lora_strength=1.0, style_edit=None, style_t2i=None):
     """Patch the sprite API workflow; uploads the source and reference pictures to ComfyUI (unless dump).
+
+    lora: a file in ComfyUI/models/loras applied to the diffusion model (None: the LoRA node is dropped).
+    style_edit / style_t2i: the style suffixes to append instead of STYLE_EDIT / STYLE_T2I (ignored with raw).
 
     Returns (api, final_node, state) where state holds src_alpha / src_size / work_size for finish_sprite().
     """
@@ -91,13 +94,22 @@ def build_api(prompt, image=None, refs=(), model="distilled", steps=None, cfg=No
     cfg = cfg if cfg is not None else dcfg
     if seed is None:
         seed = random.randint(0, 2**31)
-    text = prompt if raw else prompt + (STYLE_EDIT if image else STYLE_T2I)
+    if style_edit is None:
+        style_edit = STYLE_EDIT
+    if style_t2i is None:
+        style_t2i = STYLE_T2I
+    text = prompt if raw else prompt + (style_edit if image else style_t2i)
 
     api["1"]["inputs"]["unet_name"] = model_file
     api["5"]["inputs"]["text"] = text
     api["7"]["inputs"]["text"] = negative
     api["43"]["inputs"]["noise_seed"] = seed
     base = model == "base"
+    if lora:
+        api["4"]["inputs"].update(lora_name=lora, strength_model=float(lora_strength))
+    else:
+        for g in ("44", "62"):   # no LoRA: the guiders read the model loader directly and prune_to drops node 4
+            api[g]["inputs"]["model"] = ["1", 0]
 
     images = [image] + refs if image else []
     src_alpha, src_size, work_size = None, None, None
@@ -130,7 +142,8 @@ def build_api(prompt, image=None, refs=(), model="distilled", steps=None, cfg=No
     final_node = rgba_node if alpha == "auto" else raw_node
     api = prune_to(api, [final_node] + ([raw_node] if alpha == "auto" else []))
     state = {"src_alpha": src_alpha, "src_size": src_size, "work_size": work_size, "images": n, "model": model,
-             "steps": steps, "cfg": cfg, "seed": seed, "alpha": alpha, "text": text}
+             "steps": steps, "cfg": cfg, "seed": seed, "alpha": alpha, "text": text, "lora": lora or None,
+             "lora_strength": float(lora_strength) if lora else None}
     return api, final_node, state
 
 
@@ -161,6 +174,8 @@ def main():
     ap.add_argument("--negative", default=NEGATIVE, help="base model only")
     ap.add_argument("--seed", type=int, default=None)
     ap.add_argument("--raw", action="store_true", help="use the prompt verbatim, no style hints")
+    ap.add_argument("--lora", default=None, help="a LoRA file in ComfyUI/models/loras to apply (pixel.bat uses the pixel-art ones)")
+    ap.add_argument("--lora-strength", type=float, default=1.0)
     ap.add_argument("--name", default=None, help="output file name without extension (default from prompt)")
     ap.add_argument("--width", type=int, default=None, help="output canvas width, multiple of 16 (default: source size scaled to --megapixels, or 768)")
     ap.add_argument("--height", type=int, default=None, help="output canvas height, multiple of 16 (default: source size, or 1024); "
@@ -177,7 +192,8 @@ def main():
 
     try:
         api, final_node, state = build_api(a.prompt, a.image, a.ref, a.model, a.steps, a.cfg, a.negative, a.seed, a.raw,
-                                           a.width, a.height, a.megapixels, a.bg, a.alpha, dump=bool(a.dump))
+                                           a.width, a.height, a.megapixels, a.bg, a.alpha, dump=bool(a.dump),
+                                           lora=a.lora, lora_strength=a.lora_strength)
     except ValueError as e:
         sys.exit(str(e))
     if a.dump:
@@ -192,7 +208,7 @@ def main():
     pid = res["prompt_id"]
     ws = state["work_size"]
     print(f"queued {pid}  model={a.model} steps={state['steps']} cfg={state['cfg']} seed={state['seed']} images={state['images']} "
-          f"size={ws[0]}x{ws[1]} alpha={a.alpha}")
+          f"size={ws[0]}x{ws[1]} alpha={a.alpha}" + (f" lora={a.lora}@{a.lora_strength}" if a.lora else ""))
     t0 = time.time()
     while time.time() - t0 < a.timeout:
         hist = get(f"/history/{pid}")

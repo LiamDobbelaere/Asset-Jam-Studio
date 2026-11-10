@@ -36,10 +36,11 @@ the download if you want to fetch weights later by re-running the script.
 
 | Order | Command | What it installs | Disk |
 |---|---|---|---|
-| 1 (required) | `powershell -ExecutionPolicy Bypass -File ai-3d\setup.ps1` | ComfyUI at a pinned commit + its venv (the studio also runs on this venv), the Turing fp16 patch, workflows, custom nodes; 3D, texture and sprite models | 33 GB models + 4.3 GB venv |
-| 2 (optional, needs 1) | `powershell -ExecutionPolicy Bypass -File ai-vid\setup.ps1` | the Wan 2.2 node + workflow inside ai-3d's ComfyUI; Wan 2.2 TI2V-5B weights | 17 GB |
+| 1 (required) | `powershell -ExecutionPolicy Bypass -File ai-3d\setup.ps1` | ComfyUI at a pinned commit + its venv (the studio also runs on this venv), the Turing fp16 patch, workflows, custom nodes; 3D, texture, sprite and pixel-art models | 34 GB models + 4.3 GB venv |
+| 2 (optional, needs 1) | `powershell -ExecutionPolicy Bypass -File ai-vid\setup.ps1` | the Wan 2.2 node + workflow inside ai-3d's ComfyUI; Wan 2.2 TI2V-5B weights (also needed by ai-3d's animated pixel art) | 17 GB |
 | 3 (optional) | `powershell -ExecutionPolicy Bypass -File ai-voc\setup.ps1` | Qwen3-TTS + Whisper in `ai-voc\.venv` | 6.4 GB models + 3.7 GB venv |
 | 4 (optional) | `powershell -ExecutionPolicy Bypass -File ai-mus\setup.ps1` | ACE-Step 1.5 at a pinned commit in `ai-mus\.venv` (torch 2.7.1+cu128, the build ACE-Step pins) | 11 GB models + 6 GB venv |
+| 2b (optional, needs 1) | `powershell -ExecutionPolicy Bypass -File ai-3d\setup_pixel_anim.ps1` | city96/ComfyUI-GGUF (pinned) inside ai-3d's ComfyUI + `gguf`; Wan 2.2 I2V 14B as Q4_K_S GGUF, lightx2v 4-step LoRAs, the pixel-animate LoRA, Wan 2.1 VAE, umT5 (for `pixel.bat --animate`) | 21 GB |
 | 4b (optional) | `powershell -ExecutionPolicy Bypass -File ai-sfx\setup.ps1` | MOSS-SoundEffect v2.0 (OpenMOSS MOSS-TTS repo at a pinned commit) in `ai-sfx\.venv` (torch 2.9.0+cu128, the build upstream pins) | 11 GB model + venv |
 | 5 (optional) | `powershell -ExecutionPolicy Bypass -File ai-anim\setup.ps1` | Make-It-Animatable + NVIDIA Kimodo at pinned commits in `ai-anim\.venv` | 2.3 GB weights + 3.4 GB venv now, 16.5 GB more in the Hugging Face cache on the first animation (step 3) |
 

@@ -20,6 +20,7 @@ ANIM_PY = os.path.join(AIANIM, ".venv", "Scripts", "python.exe")
 ASSETS = os.path.join(AI3D, "assets")
 TEXTURES = os.path.join(ASSETS, "textures")
 SPRITES = os.path.join(ASSETS, "sprites")
+PIXELS = os.path.join(ASSETS, "pixel")
 COMFY_OUTPUT = os.path.join(COMFY, "output")
 COMFY_TEMP = os.path.join(COMFY, "temp")
 COMFY_INPUT = os.path.join(COMFY, "input")
@@ -54,10 +55,10 @@ FILE_ROOTS = {
     "intermediates": INTERMEDIATES,
 }
 
-for d in (JOBS, UPLOADS, THUMBS, INTERMEDIATES, TEXTURES, SPRITES, VOC_OUTPUT, MUS_OUTPUT, SFX_OUTPUT, VID_OUTPUT, CHARACTERS):
+for d in (JOBS, UPLOADS, THUMBS, INTERMEDIATES, TEXTURES, SPRITES, PIXELS, VOC_OUTPUT, MUS_OUTPUT, SFX_OUTPUT, VID_OUTPUT, CHARACTERS):
     os.makedirs(d, exist_ok=True)
 
-# make the ai-3d CLIs importable (generate.py, texture.py, sprite.py) and the ai-vid ones (shot.py, intro.py)
+# make the ai-3d CLIs importable (generate.py, texture.py, sprite.py, pixel.py) and the ai-vid ones (shot.py, intro.py)
 for _p in (os.path.join(AI3D, "scripts"), os.path.join(AIVID, "scripts"), os.path.join(AIANIM, "scripts")):
     if _p not in sys.path:
         sys.path.insert(0, _p)

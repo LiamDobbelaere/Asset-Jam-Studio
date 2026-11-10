@@ -177,6 +177,104 @@ KINDS = {
             "image_url": P("str", "", ui=True), "ref_urls": P("list", "", items="str", ui=True),
         },
     },
+    "pixel": {
+        "label": "Pixel art", "page": "pixel", "backend": "comfy",
+        "summary": "FLUX.2 klein + a pixel-art LoRA draws the picture (from text, or an existing sprite as image 1), then it is snapped "
+                   "to a real pixel grid (width x height px) and a limited palette. Characters are cut out to RGBA.",
+        "time": "~30 s (sprite, distilled), ~1 min (scene, base model)",
+        "outputs": {"pixel": "the pixel-art PNG at its real size (ai-3d/assets/pixel/<name>.png; width, height, colors)",
+                    "raw": "the diffusion picture before pixelization"},
+        "params": {
+            "prompt": P("str", "What the pixel art shows: 'a knight with a red plume, idle pose, side view'. With a source picture: what to keep / change. "
+                               "The kind's trigger words and style hints are added.", required=True),
+            "name": NAME("KnightIdle"),
+            "kind": P("str", "sprite: character / item LoRA on the distilled model, cut out to RGBA (default). scene: scene / tile LoRA on the base model, "
+                             "opaque (backgrounds, rooms, isometric buildings). none: no LoRA, the prompt alone",
+                      default="sprite", choices=["sprite", "scene", "none"]),
+            "width": P("int", "Art width in pixels (default 64; scene 128)", min=8, max=512),
+            "height": P("int", "Art height in pixels (default = width, or the source picture's aspect)", min=8, max=512),
+            "colors": P("int", "Palette size; 0 keeps every colour", default=32, min=0, max=256),
+            "image_upload": P("path", "Source picture = image 1 (a sprite to redraw as pixel art). Omit to draw from text only."),
+            "ref_uploads": P("list", "Up to two reference pictures = image 2, image 3 (need a source picture)", items="path"),
+            "alpha": P("str", "auto: cut out with BiRefNet. keep: the source alpha. none: opaque. Default: auto for sprite / none, none for scene",
+                       choices=["auto", "keep", "none"]),
+            "seed": SEED,
+            "scale": P("int", "Block size: the diffusion canvas is width x scale by height x scale (default: auto, about 512 px)", min=2, max=24),
+            "sample": P("str", "center: one sample per block at the best-aligned grid offset (default, crisp). box: average each block (softer)", default="center", choices=["center", "box"]),
+            "model": P("str", "auto: the kind's default (sprite / none: distilled, scene: base)", default="auto", choices=["auto", "distilled", "base"]),
+            "lora_strength": P("float", "LoRA weight (default 1.0)", min=0, max=2),
+            "steps": P("int", "Sampling steps (default 4 distilled / 20 base)"),
+            "cfg": P("float", "CFG, base model only (default 5)"),
+            "negative": P("str", "Negative prompt, base model only", default="blurry, smooth gradients, photo, realistic, 3d render, anti-aliasing, text, watermark, drop shadow on the ground, cropped"),
+            "bg": P("str", "Colour the transparent inputs are flattened on", default="#ffffff"),
+            "raw": P("bool", "Use the prompt verbatim: no trigger words or style hints", default=False),
+            "image_url": P("str", "", ui=True), "ref_urls": P("list", "", items="str", ui=True),
+        },
+    },
+    "pixel_sheet": {
+        "label": "Pixel sprite sheet", "page": "pixel", "backend": "comfy",
+        "summary": "A 4x4 walk-cycle sprite sheet of one 32 px character (3 walk frames facing down / left / right / up, plus arms up, "
+                   "jump left, jump right, lying down) drawn in one picture by FLUX.2 klein base + a sprite-sheet LoRA, from a description "
+                   "and / or a picture of the character, then snapped to 128x128 px, keyed to RGBA and split into named frames + walk GIFs.",
+        "time": "~1 min",
+        "outputs": {"sheet": "the 128x128 RGBA sheet (ai-3d/assets/pixel/<name>/<name>_sheet.png)", "json": "cell map + animations + palette",
+                    "frames": "list of {name, path, url}: down_0..2, arms_up, left_0..2, jump_left, right_0..2, jump_right, up_0..2, lie_down",
+                    "gifs": "list of {name, path, url}: walk_down, walk_left, walk_right, walk_up previews", "raw": "the 512 px picture", "reference": "the input picture"},
+        "params": {
+            "prompt": P("str", "The character: 'a medieval knight wearing blue metal armor and a helmet with a red plume, holding a sword'. "
+                               "With a picture: extra notes, or empty."),
+            "image_upload": P("path", "A picture of the character (a pixel still, a sprite, any PNG) = image 1. Optional; the description alone works and keeps details like a plume better."),
+            "name": NAME("Knight"),
+            "colors": P("int", "Palette size", default=32, min=0, max=256),
+            "fps": P("int", "Playback speed written to the walk GIFs and the JSON", default=6, min=1, max=30),
+            "seed": SEED,
+            "steps": P("int", "Sampling steps (default 20)"),
+            "cfg": P("float", "CFG (default 5)"),
+            "lora_strength": P("float", "Sheet LoRA weight (default 1.0)", min=0, max=2),
+            "negative": P("str", "Negative prompt"),
+            "preview_scale": P("int", "GIF upscale factor", default=4, min=1, max=16),
+            "sample": P("str", "center (default) or box, as for stills", default="center", choices=["center", "box"]),
+            "raw": P("bool", "Use the prompt verbatim (you write the whole sheet prompt)", default=False),
+            "image_url": P("str", "", ui=True),
+        },
+    },
+    "pixel_anim": {
+        "label": "Pixel animation (video model)", "page": "pixel", "backend": "comfy",
+        "summary": "Animate a pixel-art still with a video model: engine wan14 (default when installed: Wan 2.2 14B as 4-bit GGUF + a LoRA trained on "
+                   "pixel sprite animations, 4 steps; crisp, consistent, modest motion) or wan5b (Wan 2.2 TI2V-5B without a pixel LoRA; weak). "
+                   "Every frame is cut out and re-pixelized with the still's palette. Outputs a frame strip, a GIF preview, the frames and a JSON. "
+                   "For walk cycles prefer pixel_sheet.",
+        "time": "wan14: ~3.5 min (33-45 frames at 512 px, the experts stream from RAM); wan5b: ~1 min",
+        "outputs": {"sheet": "frames side by side (ai-3d/assets/pixel/<name>/<name>_sheet.png)", "gif": "looping preview, upscaled",
+                    "json": "frame size, count, fps, palette", "frames": "list of {path, url}, one PNG per frame", "mp4": "the raw Wan clip",
+                    "still": "the still that was animated"},
+        "params": {
+            "prompt": P("str", "What moves: 'the knight walks in place, side view', 'the flame flickers', 'the slime bounces'. Style hints are added.", required=True),
+            "still_upload": P("path", "The pixel-art still (a pixel flow result, or any PNG: a big picture is pixelized first)", required=True),
+            "name": NAME("KnightWalk"),
+            "engine": P("str", "wan14: Wan 2.2 14B GGUF + pixel-animate LoRA (needs ai-3d/setup_pixel_anim.ps1). wan5b: Wan 2.2 TI2V-5B. Default: wan14 when installed",
+                        choices=["wan14", "wan5b"]),
+            "frames": P("int", "Frames in the sheet, picked evenly from the clip", default=8, min=1, max=64),
+            "fps": P("int", "Playback speed written to the GIF and JSON", default=8, min=1, max=60),
+            "seconds": P("float", "Length of the Wan clip the frames are picked from (24 fps, 4k+1 frames; wan14 default 1.33 = 33 frames)", min=0.25, max=5),
+            "loop": P("str", "wan5b only. none: the clip as it is. pin: the still is also the last frame (a true loop, but Wan then barely moves). "
+                             "pingpong: the frames played forward then backward", default="none", choices=["none", "pin", "pingpong"]),
+            "seed": SEED,
+            "steps": P("int", "Sampling steps (wan14: 4 = 2 per expert; wan5b: 20)", min=1, max=50),
+            "cfg": P("float", "CFG (wan14: 1; wan5b: 5)", min=1, max=12),
+            "lora_strength": P("float", "wan14: pixel-animate LoRA weight (default 1.0)", min=0, max=2),
+            "negative": P("str", "Negative prompt for Wan"),
+            "width": P("int", "Only for a non-pixel still: art width to pixelize it to", min=8, max=512),
+            "height": P("int", "Only for a non-pixel still: art height", min=8, max=512),
+            "colors": P("int", "Only for a non-pixel still: palette size", default=32, min=0, max=256),
+            "upscale": P("str", "How the still is enlarged for Wan: nearest (blocky; default for wan14, trained on real pixel animations) or smooth (Lanczos; default for wan5b)",
+                         choices=["smooth", "nearest"]),
+            "preview_scale": P("int", "GIF upscale factor", default=4, min=1, max=16),
+            "keep_frames": P("bool", "Keep the raw frames in ComfyUI/output/aivid/<run>", default=False),
+            "raw": P("bool", "Use the prompt verbatim", default=False),
+            "still_url": P("str", "", ui=True), "sample": P("str", "", ui=True),
+        },
+    },
     "voice": {
         "label": "Voice line", "page": "voice", "backend": "voice",
         "summary": "Text -> a spoken line in one of the prepared actors' voices (Qwen3-TTS zero-shot clone), optionally in a mood. "
@@ -471,6 +569,25 @@ def _check_sprite(p):
         raise ParamError("give both width and height, or neither")
 
 
+def _check_pixel(p):
+    if p.get("ref_uploads") and not p.get("image_upload"):
+        raise ParamError("ref_uploads need a source picture (image_upload)")
+    if len(p.get("ref_uploads") or []) > 2:
+        raise ParamError("at most two ref_uploads")
+
+
+def _check_pixel_sheet(p):
+    if not (p.get("prompt") or "").strip() and not p.get("image_upload") and not p.get("image_url"):
+        raise ParamError("describe the character (prompt) or give a picture of it (image_upload)")
+
+
+def _check_pixel_anim(p):
+    if not p.get("still_upload"):
+        raise ParamError("pick a pixel-art still to animate (still_upload)")
+    if bool(p.get("width")) != bool(p.get("height")):
+        raise ParamError("give both width and height, or neither")
+
+
 def _check_voice_prep(p):
     if not re.fullmatch(r"[a-z0-9_]+", p.get("name") or ""):
         raise ParamError("name must be lowercase letters, digits or _")
@@ -509,7 +626,7 @@ def _check_paint(p):
         raise ParamError("picture_url or picture_upload: the reference picture it was modelled from")
 
 
-CHECKS = {"model3d": _check_model3d, "paint": _check_paint, "sprite": _check_sprite, "voice_prep": _check_voice_prep, "video": _check_video, "anim": _check_anim}
+CHECKS = {"model3d": _check_model3d, "paint": _check_paint, "sprite": _check_sprite, "pixel": _check_pixel, "pixel_sheet": _check_pixel_sheet, "pixel_anim": _check_pixel_anim, "voice_prep": _check_voice_prep, "video": _check_video, "anim": _check_anim}
 
 
 def validate(kind, params):
@@ -539,6 +656,10 @@ def job_title(kind, params):
         verb = {"rig": "Rig ", "anim": "Animate "}.get(p.get("stage"), "Rig + animate ")
         return verb + (p.get("name") or "Character") + (f": {', '.join(clips)}" if clips else "")
     t = (p.get("name") or p.get("prompt") or "")[:60]
+    if kind == "pixel_sheet":
+        return "Sprite sheet: " + (p.get("name") or p.get("prompt") or os.path.splitext(os.path.basename(p.get("image_upload") or "picture"))[0])[:50]
+    if kind == "pixel_anim":
+        return "Animate " + os.path.splitext(os.path.basename(p.get("still_upload") or "still"))[0] + ": " + (p.get("name") or p.get("prompt") or "")[:50]
     if kind == "prop":
         return "Model + paint: " + (p.get("name") or p.get("prompt") or "")[:60]
     if kind == "paint":
