@@ -173,8 +173,7 @@ def api_job_preview(h, q, body, job_id):
     return None
 
 
-LIBRARIES = {"models": library.models, "textures": library.textures, "sprites": library.sprites, "pixels": library.pixels, "voice": library.voice_takes,
-             "music": library.music_tracks, "sfx": library.sfx_sounds, "videos": library.videos, "characters": library.characters}
+LIBRARIES = library.LIBRARIES
 
 
 def api_library(h, q, body, name):
@@ -182,6 +181,25 @@ def api_library(h, q, body, name):
     if not fn:
         raise ApiError(f"library must be one of {list(LIBRARIES)}", 404)
     return fn(store)
+
+
+def api_library_delete(h, q, body, name):
+    """Delete one library item with every file that belongs to it (and the job record that made it).
+    body: {"key": <item key / path / name>, "secure": false, "dry": false}. `dry` only lists what would go;
+    `secure` overwrites every file with zeros before unlinking it."""
+    if name not in LIBRARIES:
+        raise ApiError(f"library must be one of {list(LIBRARIES)}", 404)
+    key = body.get("key")
+    if not key:
+        raise ApiError("key is required")
+    try:
+        return library.delete_item(store, name, key, secure=bool(body.get("secure")), dry=bool(body.get("dry")))
+    except KeyError as e:
+        raise ApiError(str(e).strip("'"), 404)
+    except RuntimeError as e:
+        raise ApiError(str(e), 409)
+    except (OSError, ValueError) as e:
+        raise ApiError(f"delete failed: {e}", 500)
 
 
 def api_presets3d(h, q, body):
@@ -321,7 +339,7 @@ ROUTES = {
     ],
     "POST": [
         (r"/api/jobs", api_jobs_create), (r"/api/jobs/(?P<job_id>[\w\-]+)/cancel", api_job_cancel),
-        (r"/api/jobs/(?P<job_id>[\w\-]+)/delete", api_job_delete),
+        (r"/api/jobs/(?P<job_id>[\w\-]+)/delete", api_job_delete), (r"/api/library/(?P<name>\w+)/delete", api_library_delete),
         (r"/api/voices/(?P<name>[\w\-]+)/clips", api_voice_clips_save),
         (r"/api/comfy/start", api_comfy_start), (r"/api/comfy/stop", api_comfy_stop), (r"/api/comfy/free", api_comfy_free),
         (r"/api/comfy/interrupt", api_comfy_interrupt),

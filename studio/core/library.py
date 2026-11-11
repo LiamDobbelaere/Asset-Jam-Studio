@@ -4,7 +4,8 @@ import time
 
 import json
 
-from .paths import ASSETS, MUS_OUTPUT, PIXELS, SFX_OUTPUT, SPRITES, TEXTURES, THUMBS, VOC_OUTPUT, COMFY_OUTPUT, file_url
+from .files import inside_roots, remove
+from .paths import ASSETS, INTERMEDIATES, MUS_OUTPUT, PIXELS, SFX_OUTPUT, SPRITES, TEXTURES, THUMBS, VOC_OUTPUT, COMFY_OUTPUT, file_url
 from .voice import wav_duration
 
 import texture as gentex   # ai-3d/scripts: the style suffixes the CLIs append
@@ -76,7 +77,7 @@ def models(store):
             if ext.lower() not in (".glb", ".fbx"):
                 continue
             key = name
-            it = items.setdefault(key, {"name": name, "glb": None, "fbx": None, "diffuse": None, "reference": None,
+            it = items.setdefault(key, {"key": name, "name": name, "glb": None, "fbx": None, "diffuse": None, "reference": None,
                                         "mtime": 0, "job": None})
             it[ext[1:].lower()] = file_url(p)
             it["mtime"] = max(it["mtime"], os.stat(p).st_mtime)
@@ -103,7 +104,7 @@ def models(store):
         for fn in os.listdir(d3):
             p = os.path.join(d3, fn)
             if fn.lower().endswith(".glb") and os.path.abspath(p) not in known:
-                items["comfy:" + fn] = {"name": fn[:-4], "glb": file_url(p), "fbx": None, "diffuse": None, "reference": None,
+                items["comfy:" + fn] = {"key": "comfy:" + fn, "name": fn[:-4], "path": p, "glb": file_url(p), "fbx": None, "diffuse": None, "reference": None,
                                         "mtime": os.stat(p).st_mtime, "job": None, "untracked": True,
                                         "thumb": thumb_url(fn[:-4])}
     out = list(items.values())
@@ -147,8 +148,8 @@ def pixels(store):
                     e["pixel"] = json.loads((getattr(im, "text", None) or {}).get("pixel", "null")) or {"width": im.width, "height": im.height}
                 except Exception:
                     e["pixel"] = None
-                out.append(e)
                 e["style"] = (e["pixel"] or {}).get("style") or ("illustration" if (e["pixel"] or {}).get("width", 0) > 512 else "pixel")
+                out.append(e)
             elif os.path.isdir(p) and os.path.isfile(os.path.join(p, fn + ".json")):
                 try:
                     meta = json.load(open(os.path.join(p, fn + ".json"), encoding="utf-8"))
@@ -335,3 +336,113 @@ def videos(store):
             out.append(e)
     out.sort(key=lambda e: e["mtime"], reverse=True)
     return out
+
+
+# ------------------------------------------------------------------------------------------------
+# deleting: every file that belongs to a library item, the job record that made it and its intermediates
+
+LIBRARIES = {"models": models, "textures": textures, "sprites": sprites, "pixels": pixels, "voice": voice_takes,
+             "music": music_tracks, "sfx": sfx_sounds, "videos": videos, "characters": characters}
+
+# files next to ai-3d/assets/<Name>.glb that belong to the same model
+MODEL_SUFFIXES = (".glb", ".fbx", "Diffuse.png", "Normal.png", "_compare.png")
+
+
+def item_key(it):
+    return it.get("key") or it.get("path") or it.get("name")
+
+
+def find_item(store, name, key):
+    """The item of library `name` whose key / path / name is `key`, or None."""
+    fn = LIBRARIES.get(name)
+    if not fn:
+        return None
+    for it in fn(store):
+        if key in (it.get("key"), it.get("path"), it.get("name")):
+            return it
+    return None
+
+
+def _job_paths(job):
+    """Every file path a job record points at: outputs (incl. ComfyUI sources) and intermediates."""
+    out = []
+
+    def walk(v):
+        if isinstance(v, dict):
+            for k in ("path", "source"):
+                if isinstance(v.get(k), str) and v[k]:
+                    out.append(v[k])
+            for x in v.values():
+                if isinstance(x, (dict, list)):
+                    walk(x)
+        elif isinstance(v, list):
+            for x in v:
+                walk(x)
+    walk(job.outputs)
+    out += [i["path"] for i in job.intermediates if i.get("path")]
+    out.append(os.path.join(INTERMEDIATES, job.id))
+    return out
+
+
+def deletion_plan(store, name, it):
+    """What deleting library item `it` of library `name` removes: {"files": [...], "job": id | None, "job_kept": bool}.
+
+    Take-based kinds (voice, music, sfx) share one job between several files: the job and its other files only
+    go when this is its last remaining take. Uploads (the user's own input files in studio/uploads) are never touched.
+    """
+    own = []
+    if name == "models":
+        if it.get("untracked"):
+            own.append(it["path"])
+        else:
+            own += [os.path.join(ASSETS, it["name"] + sfx) for sfx in MODEL_SUFFIXES]
+        own.append(thumb_path(it["name"]))
+    elif name == "characters":
+        own += [it["path"], thumb_path("char_" + it["name"])]
+    else:
+        own.append(it["path"])          # a file, or the folder of a pixel animation / sheet / video project
+    job = store.get(it["job"]["id"]) if it.get("job") else None
+    job_kept = False
+    if job:
+        here = {os.path.abspath(p) for p in own}
+        others = [f["path"] for f in job.outputs.get("files", []) if isinstance(f, dict) and f.get("path")
+                  and os.path.abspath(f["path"]) not in here and os.path.exists(f["path"])]
+        if others:
+            job_kept = True
+        else:
+            own += _job_paths(job)
+    seen, files = set(), []
+    for p in own:
+        a = os.path.abspath(p)
+        if a in seen or not os.path.lexists(a) or not inside_roots(a):
+            continue
+        seen.add(a)
+        files.append(a)
+    # a folder first, then anything inside it is already gone
+    files.sort(key=lambda p: (not os.path.isdir(p), p.lower()))
+    return {"name": it.get("name"), "files": files, "job": job.id if job else None, "job_kept": job_kept,
+            "job_status": job.status if job else None}
+
+
+def delete_item(store, name, key, secure=False, dry=False):
+    """Delete a library item with everything that belongs to it. Returns the plan plus `removed` (paths) and
+    `secure`. Raises KeyError (no such library / item) or RuntimeError (its job is still queued or running)."""
+    if name not in LIBRARIES:
+        raise KeyError(f"library must be one of {list(LIBRARIES)}")
+    it = find_item(store, name, key)
+    if not it:
+        raise KeyError("no such library item")
+    plan = deletion_plan(store, name, it)
+    plan["secure"] = bool(secure)
+    if plan["job_status"] in ("queued", "running"):
+        raise RuntimeError("the job that makes this item is still " + plan["job_status"])
+    if dry:
+        plan["removed"] = []
+        return plan
+    removed = []
+    for p in plan["files"]:
+        removed += remove(p, secure=secure)
+    if plan["job"] and not plan["job_kept"]:
+        store.delete(plan["job"], secure=secure)
+    plan["removed"] = removed
+    return plan

@@ -33,7 +33,8 @@ Claude to use it. No authentication: the server listens on localhost only.
 | `GET /api/jobs/<id>/preview` | the latest sampler preview image of a running ComfyUI job |
 | `GET /api/events` | server-sent events: `job`, `log`, `preview`, `system`, `job_removed` |
 | `GET /api/state` | system state + the last 200 jobs (what the browser loads at start) |
-| `GET /api/library/models\|textures\|sprites\|pixels\|voice\|music\|sfx\|videos\|characters` | what is on disk, joined with the job that made it |
+| `GET /api/library/models\|textures\|sprites\|pixels\|voice\|music\|sfx\|videos\|characters` | what is on disk, joined with the job that made it; every item has a `key` (or `path` / `name`) |
+| `POST /api/library/<name>/delete` `{"key", "secure"?, "dry"?}` | delete one library item with **every file that belongs to it**: the asset files, its thumbnail, the ComfyUI sources, the job record that made it and that job's intermediates (a voice / music / sfx take only takes its job along when it is the last take; uploads are never touched). `dry: true` just returns the plan (`files`, `job`, `job_kept`); `secure: true` overwrites every file with zeros and flushes it before unlinking (best effort on SSDs). Returns the plan plus `removed`. `409` while that job is queued or running; only paths inside the served roots are ever deleted |
 | `GET /api/voices` | prepared voices with moods, reference transcripts, fine-tuned checkpoints; `GET\|POST /api/voices/<name>/clips` lists / edits the clip transcripts |
 | `GET /api/presets3d`, `/api/music`, `/api/sfx`, `/api/video`, `/api/anim` | preset details, installed models, prompt tips, readiness per flow |
 | `POST /api/upload?name=x.png` (raw body) | copies a file into `studio/uploads/`; returns `{path, url}` to use as `reference_upload`, `image_upload`, `ref_uploads[]`, `audio_upload`, `mesh_upload` |

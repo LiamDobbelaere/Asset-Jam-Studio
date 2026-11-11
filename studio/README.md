@@ -35,6 +35,12 @@ the browser's localStorage.
 | Music | ACE-Step 1.5 text → music | caption, length, **seamless loop** (crossfade), takes, seed, optional lyrics + language, bpm / key / time signature, reference audio (upload or ♪ on any library track), planner LM on/off, wav/ogg/flac. Results play in a loop when the track is one; the planner's bpm/key are shown. Library: every track in `ai-mus/output` with caption, length and seed. |
 | SFX | MOSS-SoundEffect v2.0 text → sound effect | prompt with one-click examples (explosion, gunshot, footsteps, sword, UI click, pickup, rain loop), length 0.5–30 s, takes (default 4: effects vary a lot per seed), **seamless loop** for ambiences, name, seed, wav/ogg/flac; advanced: negative prompt, steps, guidance, trim, peak level. Every take is trimmed, faded and peak-normalized to -1 dBFS, 48 kHz mono. Library: every sound in `ai-sfx/output` with prompt, length and seed. |
 
+Every library item has a 🗑 button (in the detail header of the grid libraries, on each row of the voice, music, SFX
+and video lists). It shows exactly which files go: the asset files, the thumbnail, the ComfyUI sources, the job record
+that made it and that job's intermediates (a take of a multi-take voice / music / SFX job keeps the job and the other
+takes; uploads are never touched). Nothing goes to the recycle bin. **Secure delete** overwrites every file with zeros
+and flushes it before unlinking; on an SSD that is best effort, since wear levelling may keep old blocks.
+
 ## Using it from scripts and from Claude
 
 `API.md` documents the HTTP API; `studio_cli.py` (standard library, any Python 3) wraps it:
@@ -81,7 +87,8 @@ core/music.py         ACE-Step worker process, installed models, caption tips
 core/sfx.py           MOSS-SoundEffect worker process, readiness, prompt tips
 core/anim.py          rig + motion worker process (ai-anim/scripts/anim_worker.py), readiness checks, prompt tips
 core/info.py          3D presets, video presets, per-back-end readiness (GET /api/health)
-core/library.py       scans assets, textures, sprites, pixel art, voice takes, music, sound effects, video projects and characters and joins them with job records
+core/library.py       scans assets, textures, sprites, pixel art, voice takes, music, sound effects, video projects and characters and joins them with job records; deletes an item with everything that belongs to it
+core/files.py         removing files inside the served roots only: plain, or secure (zeroed and flushed before unlinking)
 web/                  index.html, app.js (vanilla), viewer.js (three.js GLB viewer), style.css
 jobs/, uploads/, comfy.log   job records, uploaded inputs, ComfyUI output (git-ignored)
 ```
@@ -90,5 +97,6 @@ jobs/, uploads/, comfy.log   job records, uploaded inputs, ComfyUI output (git-i
 
 See `API.md`. In short: `POST /api/jobs {"kind", "params"}` queues a job (validated against `GET /api/schema`),
 `GET /api/jobs/<id>/wait` blocks until it is done, `GET /api/health` says which back-ends are ready,
-`GET /api/library/<name>` lists what exists, `POST /api/upload` takes input files, `/api/events` streams
+`GET /api/library/<name>` lists what exists, `POST /api/library/<name>/delete` removes an item with all its files (plain or
+secure: zeroed first), `POST /api/upload` takes input files, `/api/events` streams
 progress. Job params are the CLI flags by name.

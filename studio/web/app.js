@@ -443,8 +443,36 @@ function updateActivity(kind, host) {
 }
 
 // ------------------------------------------------------------------ library
+const LIB_PATH = { model3d: 'models', texture: 'textures', sprite: 'sprites', pixel: 'pixels', voice: 'voice', music: 'music', sfx: 'sfx', video: 'videos', anim: 'characters' };
+function libKey(it) { return it.key || it.path || it.name; }
+function deleteBtn(kind, it, cls = 'btn xs danger') { return h('button', { class: cls, title: 'Delete this item and every file that belongs to it', onclick: e => { e.stopPropagation(); confirmDelete(kind, it); } }, '🗑'); }
+async function confirmDelete(kind, it) {
+  // ask the server what would go (dry run), show the list, then delete: plain, or secure (every byte zeroed first)
+  let plan;
+  try { plan = await api.post(`/api/library/${LIB_PATH[kind]}/delete`, { key: libKey(it), dry: true }); } catch (e) { return toast('cannot delete: ' + e.message, 'err'); }
+  const secure = h('input', { type: 'checkbox', name: 'secure' });
+  const list = h('div', { class: 'mono small', style: { maxHeight: '40vh', overflow: 'auto', margin: '10px 0', padding: '8px 10px', background: 'var(--bg3)', borderRadius: 'var(--radius-s)', whiteSpace: 'pre' } }, plan.files.join('\n') || '(no files on disk)');
+  const btn = h('button', { class: 'btn danger' }, '🗑 Delete');
+  const box = h('div', { style: { width: 'min(80vw, 760px)' } },
+    h('h3', { style: { marginBottom: '6px' } }, `Delete ${KIND_LABEL[kind] || kind} “${it.name}”?`),
+    h('div', { class: 'muted small' }, `${plan.files.length} file${plan.files.length === 1 ? '' : 's'} and folders go, with no recycle bin.`, plan.job ? (plan.job_kept ? ' The job that made it stays: it has other takes.' : ' The job record that made it and its intermediates go too.') : ''),
+    list,
+    h('label', { class: 'check', style: { display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }, title: 'Overwrite every file with zeros and flush it to disk before unlinking it. Best effort on SSDs: wear levelling may keep old blocks.' }, secure, 'Secure delete: zero out the bytes first (slower)'),
+    h('div', { class: 'row', style: { justifyContent: 'flex-end', gap: '8px', marginTop: '14px' } }, h('button', { class: 'btn', onclick: () => $('#modal').classList.add('hidden') }, 'Cancel'), btn));
+  btn.onclick = async () => {
+    btn.disabled = true; btn.textContent = secure.checked ? 'Zeroing…' : 'Deleting…';
+    try {
+      const r = await api.post(`/api/library/${LIB_PATH[kind]}/delete`, { key: libKey(it), secure: secure.checked });
+      $('#modal').classList.add('hidden');
+      if (state.selected[kind] === libKey(it)) delete state.selected[kind];
+      toast(`${secure.checked ? 'securely ' : ''}deleted ${it.name} (${r.removed.length} file${r.removed.length === 1 ? '' : 's'})`, 'ok');
+      await loadLibrary(kind, true);
+    } catch (e) { btn.disabled = false; btn.textContent = '🗑 Delete'; toast('delete failed: ' + e.message, 'err'); }
+  };
+  modal(box);
+}
 function libraryCard(kind, it) {
-  const key = it.path || it.name;
+  const key = libKey(it);
   const sel = state.selected[kind] === key;
   const img = kind === 'model3d' ? (it.thumb || it.reference || it.compare || it.diffuse) : kind === 'anim' ? (it.thumb || it.diffuse) : it.url;
   const sub = kind === 'pixel' ? (it.kind === 'pixel_sheet' ? `walk sheet · 16 × ${it.meta?.cell_width || 32} px` : it.kind === 'pixel_anim' ? `${it.style === 'illustration' ? 'illustration · ' : ''}${it.meta?.frames || it.frames?.length || '?'} frames · ${it.meta?.frame_width}×${it.meta?.frame_height}` : it.style === 'illustration' ? `illustration · ${it.pixel?.width || '?'}×${it.pixel?.height || '?'}` : `${it.pixel?.width || '?'}×${it.pixel?.height || '?'} · ${it.pixel?.colors || '?'} colours`) + ' · ' + fmtDate(it.mtime) : kind === 'voice' ? `${it.voice || ''}${it.mood ? ' · ' + it.mood : ''} · ${fmtDate(it.mtime)}` : kind === 'anim' ? `${(it.clips || []).length} clip${(it.clips || []).length === 1 ? '' : 's'} · ${fmtDate(it.mtime)}` : fmtDate(it.mtime);
@@ -462,10 +490,10 @@ function libraryBlock(kind) {
   if (kind === 'video') { wrap.append(videoTable(items)); return wrap; }
   const grid = h('div', { class: 'grid' }); for (const it of items) grid.append(libraryCard(kind, it)); wrap.append(grid);
   if (kind === 'model3d' || kind === 'anim') queueThumbs(items.filter(it => it.glb && !it.thumb));
-  const key = state.selected[kind]; const it = items.find(i => (i.path || i.name) === key);
+  const key = state.selected[kind]; const it = items.find(i => libKey(i) === key);
   if (it) {
     const job = it.job ? Object.assign({ kind, status: 'done', id: it.job.id }, it.job) : null;
-    const det = h('div', { class: 'detail' }, h('div', { class: 'card-head' }, h('h2', {}, it.name), h('span', { class: 'dim small' }, fmtDate(it.mtime)), job ? h('button', { class: 'btn xs', onclick: () => reuse(job) }, '↻ Reuse settings') : null, h('button', { class: 'btn xs right', onclick: () => { delete state.selected[kind]; renderFlow(kind); } }, '✕')),
+    const det = h('div', { class: 'detail' }, h('div', { class: 'card-head' }, h('h2', {}, it.name), h('span', { class: 'dim small' }, fmtDate(it.mtime)), job ? h('button', { class: 'btn xs', onclick: () => reuse(job) }, '↻ Reuse settings') : null, h('span', { class: 'right' }, deleteBtn(kind, it), ' ', h('button', { class: 'btn xs', onclick: () => { delete state.selected[kind]; renderFlow(kind); } }, '✕'))),
       resultView(job, Object.assign({ kind }, it)));
     wrap.append(det);
   }
@@ -478,7 +506,7 @@ function voiceTable(items) {
     tbl.append(h('tr', {}, h('td', {}, playBtn(it.url)), h('td', { class: 'small', style: { whiteSpace: 'nowrap' } }, fmtDate(it.mtime)),
       h('td', {}, h('b', { style: { textTransform: 'capitalize' } }, it.voice || ''), it.mood ? h('span', { class: 'dim' }, ' · ' + it.mood) : null),
       h('td', {}, h('span', { class: 'text', title: it.text || it.rel }, it.text || it.rel)), h('td', { class: 'small' }, it.duration ? it.duration + ' s' : ''), h('td', { class: 'mono' }, it.seed ?? ''),
-      h('td', { style: { whiteSpace: 'nowrap' } }, job ? h('button', { class: 'btn xs', title: 'Load this line and its settings into the form', onclick: () => reuse(job) }, '↻') : null, ' ', dl(it.url, 'WAV'))));
+      h('td', { style: { whiteSpace: 'nowrap' } }, job ? h('button', { class: 'btn xs', title: 'Load this line and its settings into the form', onclick: () => reuse(job) }, '↻') : null, ' ', dl(it.url, 'WAV'), ' ', deleteBtn('voice', it))));
   }
   return tbl;
 }
@@ -933,7 +961,7 @@ function musicTable(items) {
     tbl.append(h('tr', {}, h('td', {}, playBtn(it.url)), h('td', { class: 'small', style: { whiteSpace: 'nowrap' } }, fmtDate(it.mtime)),
       h('td', {}, h('b', {}, it.name), h('div', { class: 'dim small' }, [it.loop ? 'loop' : null, it.vocal ? 'vocal' : null, m.lm_bpm ? m.lm_bpm + ' bpm' : null, m.lm_keyscale].filter(Boolean).join(' · '))),
       h('td', {}, h('span', { class: 'text', title: it.caption || it.file }, it.caption || it.file)), h('td', { class: 'small' }, it.duration ? fmtDur(it.duration) : ''), h('td', { class: 'mono' }, it.seed ?? ''),
-      h('td', { style: { whiteSpace: 'nowrap' } }, job ? h('button', { class: 'btn xs', title: 'Load this caption and its settings into the form', onclick: () => reuse(job) }, '↻') : null, ' ', h('button', { class: 'btn xs', title: 'Use as style reference', onclick: () => setMusicRef({ path: it.path, url: it.url, name: it.file }) }, '♪'), ' ', dl(it.url, it.file.split('.').pop().toUpperCase()))));
+      h('td', { style: { whiteSpace: 'nowrap' } }, job ? h('button', { class: 'btn xs', title: 'Load this caption and its settings into the form', onclick: () => reuse(job) }, '↻') : null, ' ', h('button', { class: 'btn xs', title: 'Use as style reference', onclick: () => setMusicRef({ path: it.path, url: it.url, name: it.file }) }, '♪'), ' ', dl(it.url, it.file.split('.').pop().toUpperCase()), ' ', deleteBtn('music', it))));
   }
   return tbl;
 }
@@ -1019,7 +1047,7 @@ function sfxTable(items) {
     tbl.append(h('tr', {}, h('td', {}, playBtn(it.url)), h('td', { class: 'small', style: { whiteSpace: 'nowrap' } }, fmtDate(it.mtime)),
       h('td', {}, h('b', {}, it.name), it.loop ? h('div', { class: 'dim small' }, 'loop') : null),
       h('td', {}, h('span', { class: 'text', title: it.prompt || it.file }, it.prompt || it.file)), h('td', { class: 'small' }, it.duration != null ? it.duration + ' s' : ''), h('td', { class: 'mono' }, it.seed ?? ''),
-      h('td', { style: { whiteSpace: 'nowrap' } }, job ? h('button', { class: 'btn xs', title: 'Load this prompt and its settings into the form', onclick: () => reuse(job) }, '↻') : null, ' ', dl(it.url, it.file.split('.').pop().toUpperCase()))));
+      h('td', { style: { whiteSpace: 'nowrap' } }, job ? h('button', { class: 'btn xs', title: 'Load this prompt and its settings into the form', onclick: () => reuse(job) }, '↻') : null, ' ', dl(it.url, it.file.split('.').pop().toUpperCase()), ' ', deleteBtn('sfx', it))));
   }
   return tbl;
 }
@@ -1307,7 +1335,8 @@ function videoTable(items) {
       it.poster ? h('img', { src: it.poster }) : h('span', { class: 'ph' }, '▶'),
       h('div', { class: 'grow' }, h('b', {}, it.name), h('div', { class: 'dim small' }, `${it.clips.length} clip${it.clips.length === 1 ? '' : 's'} · ${fmtDate(it.mtime)}${it.final ? '' : ' · not assembled'}`)),
       it.final ? dl(it.final, 'MP4') : null,
-      h('button', { class: 'btn xs', title: 'Load this shot list into the form', onclick: e => { e.stopPropagation(); reuse({ kind: 'video', params: job ? job.params : specToParams(it.spec) }); } }, '↻'));
+      h('button', { class: 'btn xs', title: 'Load this shot list into the form', onclick: e => { e.stopPropagation(); reuse({ kind: 'video', params: job ? job.params : specToParams(it.spec) }); } }, '↻'),
+      deleteBtn('video', it));
     wrap.append(row);
     if (sel) wrap.append(h('div', { class: 'detail' }, resultVideo(job, Object.assign({ kind: 'video' }, it))));
   }
@@ -1501,6 +1530,7 @@ function buildPixelForm() {
       field('Flatten colour', text('bg', '#ffffff')), check('raw', 'Raw prompt: no trigger words or style hints', false)),
     h('div', { class: 'actions' }, h('button', { class: 'btn primary block', type: 'button', onclick: () => {
       const p = readForm(form); if (!p.prompt.trim()) return toast('write a prompt', 'err');
+      p.style = pixelStyle(); if (p.style === 'illustration' && p.kind === 'none') p.kind = 'sprite';
       if (fs.image) { p.image_upload = fs.image.path; p.image_url = fs.image.url; }
       p.ref_uploads = []; p.ref_urls = []; for (const k of ['ref0', 'ref1']) if (fs[k]) { p.ref_uploads.push(fs[k].path); p.ref_urls.push(fs[k].url); }
       if (p.ref_uploads.length && !fs.image) return toast('references need a source picture (image 1)', 'err');
@@ -1530,7 +1560,6 @@ function buildPixelAnimForm() {
       check('keep_frames', 'Keep the raw Wan frames in ComfyUI/output', false), check('raw', 'Raw prompt: no style hints', false)),
     h('div', { class: 'actions' }, h('button', { class: 'btn primary block', type: 'button', onclick: () => {
       const p = readForm(form); if (!p.prompt.trim()) return toast('say what moves', 'err');
-      p.style = pixelStyle(); if (p.style === 'illustration' && p.kind === 'none') p.kind = 'sprite';
       if (!fs.still) return toast('pick a still to animate', 'err');
       p.style = pixelStyle(); p.still_upload = fs.still.path; p.still_url = fs.still.url;
       if ((p.width || p.height) && !(p.width && p.height)) return toast('give both width and height, or neither', 'err');

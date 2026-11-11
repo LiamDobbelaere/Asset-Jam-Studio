@@ -8,7 +8,9 @@
     python studio_cli.py jobs [--status queued|running|done|error|cancelled] [--kind music] [--limit 20]
     python studio_cli.py cancel <job id>
     python studio_cli.py voices                              prepared voices and their moods
-    python studio_cli.py library models|textures|sprites|voice|music|sfx|videos|characters
+    python studio_cli.py library models|textures|sprites|pixels|voice|music|sfx|videos|characters
+    python studio_cli.py delete <library> <key> [--secure] [--dry]   remove a library item with all its files (key = its
+                                                             "key" / "path" from `library`); --secure zeroes the bytes first
     python studio_cli.py upload <file>                       copy a file into the studio (for *_upload parameters)
     python studio_cli.py comfy start|stop|free
     python studio_cli.py worker tts|music|sfx|anim stop|unload
@@ -150,7 +152,12 @@ def main(argv=None):
     s = sub.add_parser("jobs"); s.add_argument("--status"); s.add_argument("--kind"); s.add_argument("--limit", type=int, default=20)
     s = sub.add_parser("cancel"); s.add_argument("id")
     sub.add_parser("voices")
-    s = sub.add_parser("library"); s.add_argument("name", choices=["models", "textures", "sprites", "voice", "music", "sfx", "videos", "characters"])
+    LIBS = ["models", "textures", "sprites", "pixels", "voice", "music", "sfx", "videos", "characters"]
+    s = sub.add_parser("library"); s.add_argument("name", choices=LIBS)
+    s = sub.add_parser("delete", help="delete a library item and every file that belongs to it")
+    s.add_argument("name", choices=LIBS); s.add_argument("key", help="the item's 'key' (or 'path' / 'name') as `library` prints it")
+    s.add_argument("--secure", action="store_true", help="overwrite every file with zeros before removing it")
+    s.add_argument("--dry", action="store_true", help="only list what would be removed")
     s = sub.add_parser("upload"); s.add_argument("file")
     s = sub.add_parser("comfy"); s.add_argument("action", choices=["start", "stop", "free"])
     s = sub.add_parser("worker", help="end a worker process (stop) or just drop its models (unload)")
@@ -221,6 +228,8 @@ def main(argv=None):
                          "finetuned": [f["path"] for f in x.get("finetuned", [])]} for x in v["voices"]])
         if a.cmd == "library":
             return out(call("GET", f"/api/library/{a.name}"))
+        if a.cmd == "delete":
+            return out(call("POST", f"/api/library/{a.name}/delete", {"key": a.key, "secure": a.secure, "dry": a.dry}, timeout=600))
         if a.cmd == "upload":
             with open(a.file, "rb") as f:
                 data = f.read()

@@ -82,8 +82,12 @@ in `seed`: re-submitting with the same parameters and `--seed <n>` reproduces th
 | `video` | `final` (mp4), `clips[]`, `keyframes[]` | `ai-vid/output/<name>/` |
 | `anim` | `glb` (with all clips), `fbx`, `diffuse`, `clips[]` | `ai-anim/assets/<Name>/` |
 
-`studio_cli.py library models|textures|sprites|voice|music|sfx|videos|characters` lists what already exists (with
+`studio_cli.py library models|textures|sprites|pixels|voice|music|sfx|videos|characters` lists what already exists (with
 the parameters that made it): check it before generating something the user may already have.
+`studio_cli.py delete <library> <key> [--dry] [--secure]` removes one item with every file that belongs to it (asset
+files, thumbnail, ComfyUI sources, the job record and its intermediates; `--secure` zeroes the bytes first). Only when
+the user asks for it, and `--dry` first so you can tell them what goes; a voice / music / sfx take keeps its job's
+other takes.
 
 ## 4. Per kind: what to send
 
@@ -236,4 +240,5 @@ repo also work directly).
    started by a studio that has since exited): ask the user to restart ComfyUI from the studio header.
 
 Never call `comfy stop|free` or `<worker> stop|unload` while a job is running (the server answers 409 anyway);
-never delete or move files inside the asset folders; never start a second studio or ComfyUI instance.
+never delete or move files inside the asset folders yourself (deleting goes through `delete`, on the user's
+request); never start a second studio or ComfyUI instance.

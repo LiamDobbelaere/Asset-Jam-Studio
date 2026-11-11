@@ -171,12 +171,17 @@ class JobStore:
         js.sort(key=lambda j: j.created, reverse=True)
         return js[:limit] if limit else js
 
-    def delete(self, id):
+    def delete(self, id, secure=False):
+        """Forget a job. With `secure`, its record (prompt, parameters, log) is zeroed before it is unlinked."""
         with self.lock:
             j = self.jobs.pop(id, None)
         if j:
+            fp = os.path.join(JOBS, id + ".json")
             try:
-                os.remove(os.path.join(JOBS, id + ".json"))
+                if secure and os.path.isfile(fp):
+                    from .files import wipe_file
+                    wipe_file(fp)
+                os.remove(fp)
             except OSError:
                 pass
             bus.publish({"type": "job_removed", "id": id})

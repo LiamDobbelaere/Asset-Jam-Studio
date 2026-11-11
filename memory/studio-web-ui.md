@@ -22,3 +22,10 @@ goes to `studio/comfy.log` (a file, not a pipe) since 2026-10-26: a ComfyUI left
 with a *piped* stdout fails every job with `[Errno 22] Invalid argument` in KSampler; the only fix is restarting
 ComfyUI (killing processes was denied to Claude in auto mode, so ask the user). Keep `core/schema.py` in step with
 `core/flows.py` whenever a flow gains a parameter. See [[text-to-3d-setup]], [[voice-generation-setup]].
+
+Since 2026-11-11 library items can be deleted (`POST /api/library/<name>/delete`, `studio_cli.py delete`, 🗑 in the
+UI): `core/library.py deletion_plan()` decides what belongs to an item (asset files by naming convention, thumbnail,
+every `path` / `source` in the job's outputs, intermediates, the job record); `core/files.py` refuses anything
+outside `FILE_ROOTS`. Secure delete = zero + fsync + truncate before unlink, best effort on SSDs. A multi-take
+voice / music / sfx job survives until its last take goes; uploads are never deleted. Test with a second instance
+on `--port 8766` and throw-away `_deltest*` files: the user's running studio keeps the old code until restarted.
