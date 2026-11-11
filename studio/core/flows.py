@@ -464,15 +464,16 @@ def flow_pixel(job):
         p["seed"] = seed
     ensure_comfy(job)
     job.set_progress(1, "Preparing images", "", force=True)
+    style = genpixel.style_mode(p.get("style"))
     api, final_node, state = genpixel.build_still_api(
         p.get("prompt", ""), p.get("image_upload") or None, p.get("ref_uploads") or [], p.get("kind") or "sprite",
         _int(p.get("width")), _int(p.get("height")), _int(p.get("scale")), p.get("model") or "auto", _int(p.get("steps")),
         _float(p.get("cfg")), p.get("negative") or genpixel.NEGATIVE, seed, bool(p.get("raw")), _float(p.get("lora_strength")),
-        p.get("alpha") or None, p.get("bg") or "#ffffff")
+        p.get("alpha") or None, p.get("bg") or "#ffffff", style=style)
     ws, (aw, ah) = state["work_size"], state["art_size"]
-    job.meta.update({k: state[k] for k in ("images", "model", "steps", "cfg", "seed", "alpha", "text", "kind", "lora", "scale")})
+    job.meta.update({k: state[k] for k in ("images", "model", "steps", "cfg", "seed", "alpha", "text", "kind", "lora", "scale", "style")})
     job.meta.update(size=f"{ws[0]}x{ws[1]}", art=f"{aw}x{ah}")
-    job.add_log(f"seed {seed}, {state['kind']} ({state['lora'] or 'no LoRA'}), {state['model']} model, {state['steps']} steps, "
+    job.add_log(f"seed {seed}, {style} {state['kind']} ({state['lora'] or 'no LoRA'}), {state['model']} model, {state['steps']} steps, "
                 f"cfg {state['cfg']}, {state['images']} input image(s), canvas {ws[0]}x{ws[1]} = {aw}x{ah} px at x{state['scale']}")
     hist, runner = run_comfy(job, api, (2, 92))
     result = None
@@ -483,13 +484,13 @@ def flow_pixel(job):
             job.outputs["raw"] = {"path": path, "url": file_url(path)}
     if not result:
         raise ComfyError("no picture in the ComfyUI output")
-    job.set_progress(94, "Pixelizing", f"{aw}x{ah}, {_int(p.get('colors'), 32)} colours", force=True)
+    job.set_progress(94, "Saving" if style == "illustration" else "Pixelizing", f"{aw}x{ah}" + ("" if style == "illustration" else f", {_int(p.get('colors'), 32)} colours"), force=True)
     name = unique_name(PIXELS, p.get("name") or gen3d.asset_name(p.get("prompt", ""), "Pixel"), [".png", ""])
     dst = os.path.join(PIXELS, name + ".png")
     dst, pal = genpixel.finish_still(result, dst, state, _int(p.get("colors"), 32), p.get("sample") or "center")
     job.meta.update(name=name, colors=len(pal or []), palette=["#%02x%02x%02x" % c for c in (pal or [])])
-    job.outputs["pixel"] = {"path": dst, "url": file_url(dst), "width": aw, "height": ah, "colors": len(pal or []), "source": result}
-    job.add_log(f"pixel art: {dst} ({aw}x{ah}, {len(pal or [])} colours)")
+    job.outputs["pixel"] = {"path": dst, "url": file_url(dst), "width": aw, "height": ah, "colors": len(pal or []), "source": result, "style": style}
+    job.add_log(f"{style}: {dst} ({aw}x{ah}" + ("" if style == "illustration" else f", {len(pal or [])} colours") + ")")
 
 
 def flow_pixel_sheet(job):
@@ -541,8 +542,9 @@ def flow_pixel_anim(job):
         p["seed"] = seed
     ensure_comfy(job)
     job.set_progress(1, "Preparing the still", "", force=True)
+    style = genpixel.style_mode(p.get("style"))
     still, pal, meta = genpixel.load_still(still_path, _int(p.get("width")), _int(p.get("height")), _int(p.get("colors"), 32),
-                                           p.get("sample") or "center")
+                                           p.get("sample") or "center", style)
     frames, fps = _int(p.get("frames"), 8), _int(p.get("fps"), 8)
     engine = p.get("engine") or ("wan14" if genpixel.wan14_present() else "wan5b")
     upscale = p.get("upscale") or ("nearest" if engine == "wan14" else "smooth")
@@ -552,19 +554,20 @@ def flow_pixel_anim(job):
         loop = "none"
         api, info = genpixel.build_anim14_api(still, p.get("prompt", ""), frames, _float(p.get("seconds"), 1.33), seed,
                                               p.get("negative") or genpixel.WAN14_NEGATIVE, bool(p.get("raw")), upscale_mode=upscale,
-                                              lora_strength=_float(p.get("lora_strength"), 1.0), steps=_int(p.get("steps"), 4), cfg=_float(p.get("cfg"), 1.0))
+                                              lora_strength=_float(p.get("lora_strength"), 1.0), steps=_int(p.get("steps"), 4), cfg=_float(p.get("cfg"), 1.0),
+                                              style=style)
     else:
         loop = genpixel.loop_mode(p.get("loop"))
         api, info = genpixel.build_anim_api(still, p.get("prompt", ""), frames, _float(p.get("seconds"), 1.0), loop, seed,
                                             _int(p.get("steps"), 20), _float(p.get("cfg"), 5.0), p.get("negative") or genpixel.ANIM_NEGATIVE,
-                                            bool(p.get("raw")), upscale_mode=upscale)
+                                            bool(p.get("raw")), upscale_mode=upscale, style=style)
     info["still"] = still_path
-    job.meta.update(seed=info["seed"], engine=engine, art=f"{still.width}x{still.height}", video=f"{info['width']}x{info['height']}", clip_frames=info["length"],
-                    frames=frames, fps=fps, loop=loop, steps=info["steps"], cfg=info["cfg"], text=info["text"], colors=len(pal))
-    job.add_log(f"seed {info['seed']}, engine {engine}, still {still.width}x{still.height} ({len(pal)} colours) x{info['scale']} -> {info['width']}x{info['height']}, "
+    job.meta.update(seed=info["seed"], engine=engine, style=style, art=f"{still.width}x{still.height}", video=f"{info['width']}x{info['height']}", clip_frames=info["length"],
+                    frames=frames, fps=fps, loop=loop, steps=info["steps"], cfg=info["cfg"], text=info["text"], colors=len(pal or []))
+    job.add_log(f"seed {info['seed']}, engine {engine}, {style}, still {still.width}x{still.height} ({len(pal or [])} colours) x{info['scale']} -> {info['width']}x{info['height']}, "
                 f"{info['length']} clip frames ({info['seconds']} s) -> {frames} frames at {fps} fps, loop={loop}, {info['steps']} steps, cfg {info['cfg']}")
     hist, runner = run_comfy(job, api, (2, 90))
-    job.set_progress(92, "Pixelizing frames", f"{frames} frames with the still's palette", force=True)
+    job.set_progress(92, "Cutting out frames" if style == "illustration" else "Pixelizing frames", f"{frames} frames" + ("" if style == "illustration" else " with the still's palette"), force=True)
     stem = os.path.splitext(os.path.basename(still_path))[0]
     name = unique_name(PIXELS, p.get("name") or (stem + gen3d.asset_name(p.get("prompt", ""), "Anim")[:20]), [".png", ""])
     out = genpixel.finish_anim(hist, info, still, pal, name, PIXELS, fps, _int(p.get("preview_scale"), 4), bool(p.get("keep_frames")))

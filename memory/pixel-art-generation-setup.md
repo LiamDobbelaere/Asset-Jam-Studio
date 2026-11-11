@@ -42,6 +42,12 @@ load. Output: crisp pixel frames in the still's colours, consistent character, n
 45 frames with a walk-cycle prompt: real leg steps, short of a full stride). The user approved installing the node on 2026-11-10. A 3D route
 (ai-anim clips rendered orthographically in Blender, then pixelized) was considered and not built.
 
+**Illustration style (2026-11-10, user request):** `--style illustration` / schema `style` on `pixel` and `pixel_anim` and a
+Style switch on the studio page: klein without LoRA at the asked size (ILLUSTRATION prompt templates in pixel.py, ILLUS_NEGATIVE),
+no snapping; wan14 with the pixel-animate LoRA nodes pruned (shift nodes read the lightx2v LoRAs), frames kept at ~512 px, GIF
+via write_gif_rgba (255-colour adaptive palette). Tested: illustrated knight 512² in ~30 s, its 33-frame walk via the studio in
+295 s; sheets stay pixel-only.
+
 **How to apply:** measured on the 2080: 64² sprite 11-15 s warm (65 s with model load), 128×96 scene 52 s (base, 20
 steps), 1 s animation at 512² 224 s cold (Wan weights stream from RAM), then 1.5 s in 59 s and 2 s in 79 s warm.
 Pinning the still as the end frame (ai-vid's end-frame node) kills the motion: 1 s and 2 s pinned clips only

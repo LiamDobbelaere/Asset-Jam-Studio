@@ -157,7 +157,8 @@ colours"`, with `--ref_uploads '["chair.png"]'`. `--model base` for final frames
 `distilled` (default) for iteration. Give `--width` and `--height` (multiples of 16) together when a pose needs
 more room. Sprite sheets: one job per pose, same seed and prompt phrasing, then assemble with Pillow.
 
-**pixel** (pixel art at its real pixel size: characters, items, tiles, rooms). `--prompt "a knight in blue armour
+**pixel** (pixel art at its real pixel size: characters, items, tiles, rooms; or `--style illustration` for a clean
+digitally illustrated sprite at full size, e.g. `--width 512 --height 512`, same outputs, no palette). `--prompt "a knight in blue armour
 with a red plume, holding a sword, idle pose, side view" --width 64 --height 64 --colors 32 --name Knight`.
 `--kind sprite` (default: character LoRA, cut out to RGBA) for characters, enemies, items; `--kind scene` for
 rooms, backgrounds and tiles (opaque, base model, ~1 min; `--width 128 --height 96`). An existing sprite becomes
@@ -172,7 +173,8 @@ helmet with a red plume, holding a sword" --name Knight`; optionally `--image_up
 32 px: `down_0..2`, `arms_up`, `left_0..2`, `jump_left`, `right_0..2`, `jump_right`, `up_0..2`, `lie_down`;
 the `json` has the cell map and the walk animations `0-1-2-1`), `frames[]`, `gifs[]`. In a game, slice the sheet
 with the JSON or use the frame PNGs; play walks at ~6 fps. Only 32 px characters; a bad row (cut-off hat, odd
-back view) means another `--seed`. `pixel_anim` animates a still with a video model (`--engine wan14`: Wan 2.2 14B + pixel-animate LoRA, needs
+back view) means another `--seed`. `pixel_anim` animates a still with a video model (`--style illustration` for an illustrated still: frames stay at
+~512 px, no pixel LoRA; `--engine wan14`: Wan 2.2 14B + pixel-animate LoRA, needs
 `health` → `backends.pixel.wan14`; ~3.5 min; crisp and consistent, modest motion: idles, effects, small gestures,
 not full walk cycles): `--still_upload <pixel png> --prompt "the flame flickers" --frames 8 --fps 8`. Check
 `mp4` / a few `frames[]`. `--engine wan5b` is the weak fallback without the LoRA.

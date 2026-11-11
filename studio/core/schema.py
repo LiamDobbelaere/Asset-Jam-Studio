@@ -188,11 +188,13 @@ KINDS = {
             "prompt": P("str", "What the pixel art shows: 'a knight with a red plume, idle pose, side view'. With a source picture: what to keep / change. "
                                "The kind's trigger words and style hints are added.", required=True),
             "name": NAME("KnightIdle"),
-            "kind": P("str", "sprite: character / item LoRA on the distilled model, cut out to RGBA (default). scene: scene / tile LoRA on the base model, "
-                             "opaque (backgrounds, rooms, isometric buildings). none: no LoRA, the prompt alone",
+            "style": P("str", "pixel: pixel art (LoRAs, snapped to a grid + palette; default). illustration: a clean digitally illustrated sprite / scene "
+                              "at the requested size, no LoRA, no snapping (same cut-out, same outputs)", default="pixel", choices=["pixel", "illustration"]),
+            "kind": P("str", "sprite: character / item (pixel: LoRA on the distilled model), cut out to RGBA (default). scene: background / tiles "
+                             "(pixel: LoRA on the base model), opaque. none: pixel art without a LoRA",
                       default="sprite", choices=["sprite", "scene", "none"]),
-            "width": P("int", "Art width in pixels (default 64; scene 128)", min=8, max=512),
-            "height": P("int", "Art height in pixels (default = width, or the source picture's aspect)", min=8, max=512),
+            "width": P("int", "Width in pixels: pixel art 8-512 (default 64; scene 128); illustration up to 1024 (default 512; scene 1024)", min=8, max=1024),
+            "height": P("int", "Height in pixels (default = width, or the source picture's aspect)", min=8, max=1024),
             "colors": P("int", "Palette size; 0 keeps every colour", default=32, min=0, max=256),
             "image_upload": P("path", "Source picture = image 1 (a sprite to redraw as pixel art). Omit to draw from text only."),
             "ref_uploads": P("list", "Up to two reference pictures = image 2, image 3 (need a source picture)", items="path"),
@@ -250,7 +252,9 @@ KINDS = {
                     "still": "the still that was animated"},
         "params": {
             "prompt": P("str", "What moves: 'the knight walks in place, side view', 'the flame flickers', 'the slime bounces'. Style hints are added.", required=True),
-            "still_upload": P("path", "The pixel-art still (a pixel flow result, or any PNG: a big picture is pixelized first)", required=True),
+            "still_upload": P("path", "The still (a pixel flow result, or any PNG: in pixel style a big picture is pixelized first)", required=True),
+            "style": P("str", "pixel: frames re-pixelized with the still's palette (wan14 uses the pixel-animate LoRA). illustration: no pixel LoRA, "
+                              "frames kept at video resolution (~512 px) as cut-out RGBA", default="pixel", choices=["pixel", "illustration"]),
             "name": NAME("KnightWalk"),
             "engine": P("str", "wan14: Wan 2.2 14B GGUF + pixel-animate LoRA (needs ai-3d/setup_pixel_anim.ps1). wan5b: Wan 2.2 TI2V-5B. Default: wan14 when installed",
                         choices=["wan14", "wan5b"]),
@@ -656,6 +660,8 @@ def job_title(kind, params):
         verb = {"rig": "Rig ", "anim": "Animate "}.get(p.get("stage"), "Rig + animate ")
         return verb + (p.get("name") or "Character") + (f": {', '.join(clips)}" if clips else "")
     t = (p.get("name") or p.get("prompt") or "")[:60]
+    if kind == "pixel" and p.get("style") == "illustration":
+        return "Illustration: " + t
     if kind == "pixel_sheet":
         return "Sprite sheet: " + (p.get("name") or p.get("prompt") or os.path.splitext(os.path.basename(p.get("image_upload") or "picture"))[0])[:50]
     if kind == "pixel_anim":

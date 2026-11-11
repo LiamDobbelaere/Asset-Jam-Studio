@@ -148,6 +148,7 @@ def pixels(store):
                 except Exception:
                     e["pixel"] = None
                 out.append(e)
+                e["style"] = (e["pixel"] or {}).get("style") or ("illustration" if (e["pixel"] or {}).get("width", 0) > 512 else "pixel")
             elif os.path.isdir(p) and os.path.isfile(os.path.join(p, fn + ".json")):
                 try:
                     meta = json.load(open(os.path.join(p, fn + ".json"), encoding="utf-8"))
@@ -158,7 +159,7 @@ def pixels(store):
                 frames = [os.path.join(fdir, f) for f in sorted(os.listdir(fdir))] if os.path.isdir(fdir) else []
                 job = idx.get(os.path.abspath(sheet))
                 is_sheet = meta.get("type") == "sheet"
-                e = {"kind": "pixel_sheet" if is_sheet else "pixel_anim", "name": fn, "path": p, "file": fn,
+                e = {"kind": "pixel_sheet" if is_sheet else "pixel_anim", "name": fn, "path": p, "file": fn, "style": meta.get("style") or "pixel",
                      "url": file_url(sheet) if is_sheet and os.path.isfile(sheet) else file_url(gif) if os.path.isfile(gif) else None,
                      "sheet": file_url(sheet) if os.path.isfile(sheet) else None, "sheet_path": sheet if os.path.isfile(sheet) else None,
                      "gif": file_url(gif) if os.path.isfile(gif) else None, "mp4": file_url(mp4) if os.path.isfile(mp4) else None,

@@ -35,7 +35,7 @@ import numpy as np
 from PIL import Image, ImageColor, PngImagePlugin
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from generate import ROOT, OUT_DIR, get, post, asset_name  # noqa: E402
+from generate import ROOT, OUT_DIR, get, post, asset_name, prune_to  # noqa: E402
 import sprite as gensprite  # noqa: E402
 
 PIXEL_DIR = os.path.join(ROOT, "assets", "pixel")
@@ -59,6 +59,29 @@ KINDS = {
                      "limited colour palette, same design and colours, plain solid white background"},
 }
 NEGATIVE = "blurry, smooth gradients, photo, realistic, 3d render, anti-aliasing, text, watermark, drop shadow on the ground, cropped"
+
+# style "illustration": the same flows without the pixel LoRAs and without the grid / palette step: klein draws a clean
+# digitally painted sprite (or scene) at the requested size, Wan 14B animates it without the pixel-animate LoRA.
+STYLES = ("pixel", "illustration")
+ILLUSTRATION = {
+    "sprite": {"lora": None, "model": "distilled", "width": 512, "height": 512, "alpha": "auto",
+               "t2i": "{prompt}, 2D game character sprite, clean digital illustration, soft cel shading, clear shapes, full body "
+                      "in view, centered, plain solid white background, no ground shadow",
+               "edit": "the exact same character as image 1 redrawn as a clean digitally illustrated 2D game sprite: {prompt}, same "
+                       "design, same colours, same pose, soft cel shading, plain solid white background, no ground shadow"},
+    "scene": {"lora": None, "model": "distilled", "width": 1024, "height": 768, "alpha": "none",
+              "t2i": "{prompt}, 2D game background illustration, clean digital painting, soft lighting, clear shapes",
+              "edit": "image 1 redrawn as a clean 2D game background illustration: {prompt}, same layout, same colours"},
+}
+ILLUSTRATION["none"] = ILLUSTRATION["sprite"]
+ILLUS_NEGATIVE = "blurry, photo, realistic, 3d render, pixel art, pixelated, text, watermark, drop shadow on the ground, cropped"
+
+
+def style_mode(v):
+    v = (v or "pixel").lower()
+    if v not in STYLES:
+        raise ValueError(f"style must be one of {STYLES}")
+    return v
 ANIM_STYLE = (", pixel art sprite animation for a 2D game, the subject stays in place in the centre of the frame, "
               "static camera, no zoom, plain solid white background, crisp pixels, limited palette, smooth loop")
 ANIM_NEGATIVE = ("blurry, smooth gradients, photorealistic, 3d render, anti-aliasing, text, watermark, camera motion, zoom, "
@@ -226,6 +249,30 @@ def write_gif(frames, pal, dst, fps=8, scale=4):
     return dst
 
 
+def write_gif_rgba(frames, dst, fps=8, scale=1):
+    """Looping GIF of full-colour RGBA frames: one adaptive 255-colour palette from all frames, index 0 transparent."""
+    sheet = Image.new("RGBA", (frames[0].width * len(frames), frames[0].height), (0, 0, 0, 0))
+    for i, fr in enumerate(frames):
+        sheet.paste(fr, (i * frames[0].width, 0))
+    opaque = sheet.convert("RGB")
+    q = opaque.quantize(colors=255, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
+    raw = q.getpalette()[:765]
+    pal = [tuple(raw[3 * i:3 * i + 3]) for i in range(255)]
+    out = []
+    w = frames[0].width
+    for i, fr in enumerate(frames):
+        idx = np.asarray(q.crop((i * w, 0, (i + 1) * w, fr.height)), dtype=np.int32) + 1
+        idx[np.asarray(fr)[..., 3] < 128] = 0
+        p = Image.fromarray(idx.astype(np.uint8), "P")
+        p.putpalette([0, 0, 0] + [v for c in pal for v in c])
+        if scale > 1:
+            p = p.resize((p.width * scale, p.height * scale), Image.NEAREST)
+        out.append(p)
+    out[0].save(dst, save_all=True, append_images=out[1:], duration=max(20, round(1000 / fps)), loop=0, transparency=0,
+                disposal=2, optimize=False)
+    return dst
+
+
 def pick_scale(aw, ah, scale=None, target=512, lo=512, hi=1536):
     """Block size so that the diffusion canvas (art size x scale) is a multiple of 16 on both sides, near `target`
     px on the longest side (the LoRAs were trained at 512). Returns (scale, canvas_w, canvas_h)."""
@@ -248,11 +295,13 @@ def pick_scale(aw, ah, scale=None, target=512, lo=512, hi=1536):
 
 def build_still_api(prompt, image=None, refs=(), kind="sprite", width=None, height=None, scale=None, model=None,
                     steps=None, cfg=None, negative=NEGATIVE, seed=None, raw=False, lora_strength=None, alpha=None,
-                    bg="#ffffff", dump=False, upload_prefix="pixel_in"):
-    """The sprite workflow with the pixel-art LoRA, at a canvas that is a whole number of blocks.
+                    bg="#ffffff", dump=False, upload_prefix="pixel_in", style="pixel"):
+    """The sprite workflow with the pixel-art LoRA, at a canvas that is a whole number of blocks (style "pixel"), or
+    without a LoRA at the requested size with no snapping afterwards (style "illustration").
 
-    Returns (api, final_node, state); state adds art_size, scale, kind, lora for finish_still()."""
-    k = KINDS[kind]
+    Returns (api, final_node, state); state adds art_size, scale, kind, style, lora for finish_still()."""
+    style = style_mode(style)
+    k = (ILLUSTRATION if style == "illustration" else KINDS)[kind]
     aw = int(width or k["width"])
     if height:
         ah = int(height)
@@ -261,7 +310,14 @@ def build_still_api(prompt, image=None, refs=(), kind="sprite", width=None, heig
         ah = max(8, round(aw * sh / sw))
     else:
         ah = aw if width else int(k["height"])
-    s, cw, ch = pick_scale(aw, ah, scale)
+    if style == "illustration":                  # klein draws at the output size: multiples of 16, at most ~1 MP
+        f = min(1.0, (1.05e6 / (aw * ah)) ** 0.5)
+        cw, ch = max(16, round(aw * f / 16) * 16), max(16, round(ah * f / 16) * 16)
+        aw, ah, s = cw, ch, 1
+        if negative == NEGATIVE:
+            negative = ILLUS_NEGATIVE
+    else:
+        s, cw, ch = pick_scale(aw, ah, scale)
     model = model or k["model"]
     if model == "auto":
         model = k["model"]
@@ -271,12 +327,13 @@ def build_still_api(prompt, image=None, refs=(), kind="sprite", width=None, heig
         text, image, refs, model, steps, cfg, negative, seed, raw=True, width=cw, height=ch, megapixels=1.0, bg=bg,
         alpha=alpha, dump=dump, upload_prefix=upload_prefix, lora=k["lora"],
         lora_strength=1.0 if lora_strength is None else lora_strength)
-    state.update(art_size=(aw, ah), scale=s, kind=kind, prompt=prompt)
+    state.update(art_size=(aw, ah), scale=s, kind=kind, prompt=prompt, style=style)
     return api, final_node, state
 
 
 def finish_still(result_png, dst, state, colors=32, sample="center"):
-    """ComfyUI result (RGBA when cut out) -> pixel-art PNG at the art size. Returns (dst, palette)."""
+    """ComfyUI result (RGBA when cut out) -> pixel-art PNG at the art size, or (style illustration) the picture as it
+    is, as RGBA. Returns (dst, palette); the palette is None for illustrations."""
     os.makedirs(os.path.dirname(dst), exist_ok=True)
     src = Image.open(result_png)
     info = PngImagePlugin.PngInfo()
@@ -285,8 +342,12 @@ def finish_still(result_png, dst, state, colors=32, sample="center"):
     im = src.convert("RGBA")
     if state.get("alpha") == "keep" and state.get("src_alpha") is not None:
         im.putalpha(state["src_alpha"].resize(im.size, Image.LANCZOS))
+    if state.get("style") == "illustration":
+        info.add_text("pixel", json.dumps({"style": "illustration", "width": im.width, "height": im.height, "kind": state.get("kind")}))
+        im.save(dst, pnginfo=info)
+        return dst, None
     small, pal = pixelize(im, state["art_size"], colors=colors, sample=sample)
-    info.add_text("pixel", json.dumps({"width": small.width, "height": small.height, "scale": state.get("scale"),
+    info.add_text("pixel", json.dumps({"style": "pixel", "width": small.width, "height": small.height, "scale": state.get("scale"),
                                        "colors": len(pal or []), "palette": ["#%02x%02x%02x" % c for c in (pal or [])],
                                        "kind": state.get("kind")}))
     small.save(dst, pnginfo=info)
@@ -413,9 +474,10 @@ def _shot():
     return shot
 
 
-def load_still(path, width=None, height=None, colors=32, sample="center"):
+def load_still(path, width=None, height=None, colors=32, sample="center", style="pixel"):
     """The still as pixel art: a small PNG is taken as is (its colours are its palette); a bigger picture is
-    pixelized to width x height first. Returns (RGBA at art size, palette, pixel meta from the PNG or None)."""
+    pixelized to width x height first. Style illustration: the picture as it is (longest side capped at 1024), no
+    palette. Returns (RGBA at art size, palette or None, pixel meta from the PNG or None)."""
     im = Image.open(path)
     meta = None
     try:
@@ -423,6 +485,11 @@ def load_still(path, width=None, height=None, colors=32, sample="center"):
     except ValueError:
         meta = None
     im = im.convert("RGBA")
+    if style_mode(style) == "illustration":
+        if max(im.size) > 1024:
+            f = 1024 / max(im.size)
+            im = im.resize((max(1, round(im.width * f)), max(1, round(im.height * f))), Image.LANCZOS)
+        return im, None, meta
     if max(im.size) <= 256 and not (width and height):
         a = np.asarray(im)
         pal = [tuple(int(v) for v in c) for c in np.unique(a[a[..., 3] > 0][:, :3], axis=0)]
@@ -468,21 +535,36 @@ def wan14_present():
     return files and os.path.isdir(os.path.join(ROOT, "ComfyUI", "custom_nodes", "ComfyUI-GGUF"))
 
 
+ILLUS_ANIM_STYLE = (", smooth 2D animation of a game character, clean digital illustration, the subject stays in place in the "
+                    "centre, static camera, plain solid white background")
+ILLUS_ANIM_NEGATIVE = ("blurry, photorealistic, 3d render, pixel art, text, watermark, camera motion, zoom, morphing into something else, "
+                       "extra limbs, deformed, the background changes")
+
+
 def build_anim14_api(still, prompt, frames=8, seconds=1.0, seed=None, negative=WAN14_NEGATIVE, raw=False, video_target=512,
-                     bg="#ffffff", dump=False, run_id=None, upscale_mode="nearest", lora_strength=1.0, steps=4, cfg=1.0):
+                     bg="#ffffff", dump=False, run_id=None, upscale_mode="nearest", lora_strength=1.0, steps=4, cfg=1.0, style="pixel"):
     """Wan 2.2 I2V A14B (Q4_K_S GGUF, both experts) + lightx2v 4-step LoRAs + styly-agents' pixel-animate LoRA, from the
     still as the first frame (no end frame: that LoRA's workflow has none). Same frame handling as build_anim_api:
     frames saved as PNG + BiRefNet RGBA. The still is enlarged nearest-neighbour by default (the LoRA was trained on real
     pixel animations). Returns (api, info) compatible with finish_anim()."""
     shot = _shot()
+    style = style_mode(style)
     aw, ah = still.size
-    s = max(1, round(video_target / max(aw, ah)))
-    vw, vh = aw * s, ah * s
+    if style == "illustration":                  # fit the picture into video_target px (it is not a tiny pixel still)
+        f = video_target / max(aw, ah)
+        vw, vh = max(16, round(aw * f)), max(16, round(ah * f))
+        s = round(f, 3)
+        big = still.resize((vw, vh), Image.LANCZOS)
+    else:
+        s = max(1, round(video_target / max(aw, ah)))
+        vw, vh = aw * s, ah * s
+        big = upscale(still, s) if upscale_mode == "nearest" else still.resize((vw, vh), Image.LANCZOS)
     cw, ch = (vw + 15) // 16 * 16, (vh + 15) // 16 * 16
     canvas = Image.new("RGB", (cw, ch), ImageColor.getrgb(bg))
-    big = upscale(still, s) if upscale_mode == "nearest" else still.resize((vw, vh), Image.LANCZOS)
     canvas.paste(big, (0, 0), big)
-    text = prompt if raw else prompt + WAN14_STYLE
+    text = prompt if raw else prompt + (ILLUS_ANIM_STYLE if style == "illustration" else WAN14_STYLE)
+    if style == "illustration" and negative in (None, "", WAN14_NEGATIVE):
+        negative = ILLUS_ANIM_NEGATIVE
     n_clip = shot.frames_for(seconds)
     if seed is None:
         seed = random.randint(0, 2**31)
@@ -490,8 +572,13 @@ def build_anim14_api(still, prompt, frames=8, seconds=1.0, seed=None, negative=W
     api = json.load(open(os.path.join(ROOT, "workflows", "pixel_wan14_api.json"), encoding="utf-8"))
     api["5"]["inputs"]["text"] = text
     api["6"]["inputs"]["text"] = negative or WAN14_NEGATIVE
-    for nid in ("11", "21"):
-        api[nid]["inputs"]["strength_model"] = float(lora_strength)
+    if style == "illustration":                  # no pixel-animate LoRA: the shift nodes read the lightx2v LoRAs directly
+        api["12"]["inputs"]["model"] = ["10", 0]
+        api["22"]["inputs"]["model"] = ["20", 0]
+        api = prune_to(api, ["43", "55"])
+    else:
+        for nid in ("11", "21"):
+            api[nid]["inputs"]["strength_model"] = float(lora_strength)
     api["31"]["inputs"].update(width=cw, height=ch, length=n_clip)
     half = max(1, steps // 2)
     api["40"]["inputs"].update(noise_seed=seed, steps=steps, cfg=cfg, end_at_step=half)
@@ -505,12 +592,12 @@ def build_anim14_api(still, prompt, frames=8, seconds=1.0, seed=None, negative=W
     info = {"seed": seed, "length": n_clip, "seconds": round((n_clip - 1) / VIDEO_FPS, 2), "width": cw, "height": ch, "steps": steps,
             "cfg": cfg, "run_id": rid, "frames_node": "43", "rgba_node": "55", "art_size": (aw, ah), "scale": s, "crop": (vw, vh),
             "frames_out": frames, "loop": "none", "clip_frames": n_clip, "text": text, "prompt": prompt, "upscale": upscale_mode,
-            "engine": "wan14"}
+            "engine": "wan14", "style": style}
     return api, info
 
 
 def build_anim_api(still, prompt, frames=8, seconds=1.0, loop="none", seed=None, steps=20, cfg=5.0, negative=ANIM_NEGATIVE,
-                   raw=False, video_target=512, bg="#ffffff", dump=False, run_id=None, upscale_mode="smooth"):
+                   raw=False, video_target=512, bg="#ffffff", dump=False, run_id=None, upscale_mode="smooth", style="pixel"):
     """Wan 2.2 TI2V-5B image-to-video from the pixel still (upscaled nearest to ~video_target px), with the still as
     the first frame and, for loop="pin", as the last frame too (aivid_wan's end-frame node); BiRefNet cuts out every
     decoded frame. `still` is an RGBA image at its art size. upscale_mode: how the still is enlarged for Wan: "smooth"
@@ -527,7 +614,8 @@ def build_anim_api(still, prompt, frames=8, seconds=1.0, loop="none", seed=None,
     canvas.paste(big, (0, 0), big)
     tmp = os.path.join(tempfile.gettempdir(), f"pixel_anim_{uuid.uuid4().hex}.png")
     canvas.save(tmp)
-    text = prompt if raw else prompt + ANIM_STYLE
+    style = style_mode(style)
+    text = prompt if raw else prompt + (ILLUS_ANIM_STYLE if style == "illustration" else ANIM_STYLE)
     n_clip = shot.frames_for(seconds)
     try:
         api, info = shot.build_api(text, start=tmp, end=tmp if loop == "pin" else None, width=cw, height=ch, seconds=seconds, seed=seed,
@@ -545,7 +633,7 @@ def build_anim_api(still, prompt, frames=8, seconds=1.0, loop="none", seed=None,
     api["54"] = {"inputs": {"image": ["31", 0], "alpha": ["53", 0]}, "class_type": "JoinImageWithAlpha", "_meta": {"title": "Add alpha"}}
     api["55"] = {"inputs": {"filename_prefix": f"aivid/{rid}/rgba/f", "images": ["54", 0]}, "class_type": "SaveImage", "_meta": {"title": "Save RGBA frames"}}
     info.update(rgba_node="55", art_size=(aw, ah), scale=s, crop=(vw, vh), frames_out=frames, loop=loop, clip_frames=n_clip,
-                text=text, prompt=prompt, upscale=upscale_mode)
+                text=text, prompt=prompt, upscale=upscale_mode, engine="wan5b", style=style)
     return api, info
 
 
@@ -585,8 +673,14 @@ def finish_anim(hist, info, still, pal, name, out_root=PIXEL_DIR, fps=8, preview
     aw, ah = info["art_size"]
     vw, vh = info["crop"]
     frames = []
+    illustration = info.get("style") == "illustration"
+    if illustration:
+        aw, ah = vw, vh                           # frames stay at the video size
     for i in idx:
         im = Image.open(rgba[i]).convert("RGBA").crop((0, 0, vw, vh))
+        if illustration:
+            frames.append(im)
+            continue
         small, _ = pixelize(im, (aw, ah), palette=pal, offset=(0.5, 0.5))   # the clip's grid is the upscaled still's
         frames.append(small)
     if info["loop"] == "pingpong" and len(frames) > 2:
@@ -604,10 +698,13 @@ def finish_anim(hist, info, still, pal, name, out_root=PIXEL_DIR, fps=8, preview
         frame_paths.append(fp)
     sheet_path = os.path.join(d, f"{name}_sheet.png")
     sheet.save(sheet_path)
-    gif_path = write_gif(frames, pal, os.path.join(d, f"{name}.gif"), fps=fps, scale=preview_scale)
-    meta = {"type": "anim", "name": name, "frame_width": aw, "frame_height": ah, "frames": n, "columns": n, "fps": fps, "loop": info["loop"],
-            "picked": info["frames_out"],
-            "palette": ["#%02x%02x%02x" % c for c in pal], "sheet": os.path.basename(sheet_path), "gif": os.path.basename(gif_path),
+    if illustration:
+        gif_path = write_gif_rgba(frames, os.path.join(d, f"{name}.gif"), fps=fps, scale=1)
+    else:
+        gif_path = write_gif(frames, pal, os.path.join(d, f"{name}.gif"), fps=fps, scale=preview_scale)
+    meta = {"type": "anim", "style": info.get("style", "pixel"), "name": name, "frame_width": aw, "frame_height": ah, "frames": n, "columns": n,
+            "fps": fps, "loop": info["loop"], "picked": info["frames_out"], "engine": info.get("engine", "wan5b"),
+            "palette": ["#%02x%02x%02x" % c for c in (pal or [])], "sheet": os.path.basename(sheet_path), "gif": os.path.basename(gif_path),
             "clip_frames": len(rgba), "clip_indices": idx, "seed": info["seed"], "video_size": [info["width"], info["height"]],
             "steps": info["steps"], "cfg": info["cfg"], "prompt": info.get("prompt"), "text": info.get("text"), "still": info.get("still")}
     json_path = os.path.join(d, f"{name}.json")
@@ -660,6 +757,8 @@ def main():
     ap.add_argument("--sheet", action="store_true", help="draw a 4x4 walk-cycle sprite sheet (32 px character: 3 walk frames x 4 directions + 4 poses) "
                     "of the character in the prompt and / or --image; splits it into frames + walk GIFs")
     ap.add_argument("--animate", metavar="STILL", help="animate this pixel-art PNG with a video model instead (--engine); the prompt says what moves")
+    ap.add_argument("--style", choices=STYLES, default="pixel", help="pixel: pixel art (LoRAs, grid + palette; default). illustration: clean digitally "
+                    "illustrated sprites / scenes at the requested size, animated without the pixel LoRA")
     ap.add_argument("--kind", choices=KINDS, default="sprite", help="sprite: character LoRA, cut out (default); scene: scene / object LoRA on the base model, opaque; none: no LoRA")
     ap.add_argument("--image", help="source picture = image 1 (redrawn as pixel art)")
     ap.add_argument("--ref", action="append", default=[], help="extra reference = image 2, image 3 (needs --image)")
@@ -719,18 +818,18 @@ def main():
         return
 
     if a.animate:
-        still, pal, meta = load_still(a.animate, a.width, a.height, a.colors, a.sample)
+        still, pal, meta = load_still(a.animate, a.width, a.height, a.colors, a.sample, a.style)
         if a.engine == "wan14":
             if not wan14_present():
                 sys.exit("engine wan14 needs the Wan 2.2 14B GGUF files, the lightx2v + pixel-animate LoRAs and ComfyUI-GGUF (see the README)")
             api, info = build_anim14_api(still, a.prompt, a.frames, a.seconds, a.seed, a.negative or WAN14_NEGATIVE, a.raw, dump=bool(a.dump),
                                          upscale_mode=a.upscale if a.upscale != "auto" else "nearest",
                                          lora_strength=1.0 if a.lora_strength is None else a.lora_strength, steps=a.steps or 4,
-                                         cfg=a.cfg if a.cfg is not None else 1.0)
+                                         cfg=a.cfg if a.cfg is not None else 1.0, style=a.style)
         else:
             api, info = build_anim_api(still, a.prompt, a.frames, a.seconds, a.loop, a.seed, a.steps or 20, a.cfg if a.cfg is not None else 5.0,
                                        a.negative or ANIM_NEGATIVE, a.raw, dump=bool(a.dump),
-                                       upscale_mode=a.upscale if a.upscale != "auto" else "smooth")
+                                       upscale_mode=a.upscale if a.upscale != "auto" else "smooth", style=a.style)
         info["still"] = os.path.abspath(a.animate)
         if a.dump:
             json.dump(api, open(a.dump, "w", encoding="utf-8"), indent=1)
@@ -738,7 +837,7 @@ def main():
             return
         pid = _queue(api)
         print(f"queued {pid}  animate {still.width}x{still.height} x{info['scale']} -> {info['width']}x{info['height']}, "
-              f"{info['length']} clip frames -> {a.frames} frames, seed={info['seed']} loop={a.loop} palette={len(pal)}")
+              f"{info['length']} clip frames -> {a.frames} frames, seed={info['seed']} loop={a.loop} style={a.style} palette={len(pal or [])}")
         hist = _wait(pid, a.timeout)
         name = a.name or (os.path.splitext(os.path.basename(a.animate))[0] + asset_name(a.prompt, "Anim")[:20])
         out = finish_anim(hist, info, still, pal, name, a.out, a.fps, a.preview_scale, a.keep_frames)
@@ -751,7 +850,8 @@ def main():
         sys.exit("give a prompt")
     try:
         api, final_node, state = build_still_api(a.prompt, a.image, a.ref, a.kind, a.width, a.height, a.scale, a.model, a.steps,
-                                                 a.cfg, a.negative or NEGATIVE, a.seed, a.raw, a.lora_strength, a.alpha, dump=bool(a.dump))
+                                                 a.cfg, a.negative or NEGATIVE, a.seed, a.raw, a.lora_strength, a.alpha, dump=bool(a.dump),
+                                                 style=a.style)
     except ValueError as e:
         sys.exit(str(e))
     if a.dump:
@@ -760,7 +860,7 @@ def main():
         return
     pid = _queue(api)
     ws, (aw, ah) = state["work_size"], state["art_size"]
-    print(f"queued {pid}  kind={a.kind} model={state['model']} steps={state['steps']} cfg={state['cfg']} seed={state['seed']} "
+    print(f"queued {pid}  style={a.style} kind={a.kind} model={state['model']} steps={state['steps']} cfg={state['cfg']} seed={state['seed']} "
           f"canvas={ws[0]}x{ws[1]} art={aw}x{ah} (x{state['scale']}) lora={state['lora']} alpha={state['alpha']}")
     hist = _wait(pid, a.timeout)
     result = None

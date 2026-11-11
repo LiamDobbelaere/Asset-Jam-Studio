@@ -241,6 +241,7 @@ function reuse(job) {
   if (job.kind === 'paint') { show3dFlow('paint'); const p = job.params; const fs = state.forms.paint = state.forms.paint || {}; fs.model = p.model_upload ? { path: p.model_upload, name: p.model_name || basename(p.model_upload) } : p.model_url ? { url: p.model_url, name: p.model_name } : null; fs.picture = p.picture_upload ? { path: p.picture_upload, url: p.picture_url, name: p.picture_name || basename(p.picture_upload) } : p.picture_url ? { url: p.picture_url, name: p.picture_name } : null; const form = $('#paint-form'); fillForm(form, p); for (const u of form.querySelectorAll('.field')) if (u.refresh) u.refresh(); form.scrollIntoView({ behavior: 'smooth', block: 'start' }); toast('settings loaded into the paint form'); return; }
   if (job.kind === 'anim') { const p = job.params; const fs = state.forms.anim = state.forms.anim || {}; fs.source = p.mesh_upload ? { path: p.mesh_upload, url: p.mesh_url, name: basename(p.mesh_upload) } : p.source ? { path: p.source, url: p.source_url, name: p.source_name || basename(p.source) } : null; fs.clips = (p.clips || []).map(c => Object.assign({}, c)); fs.values = Object.assign({}, p); buildAnimForm(); $('#anim-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); toast('settings loaded into the form'); return; }
   if (job.kind === 'pixel_sheet') { const p = job.params; const fs = state.forms.pixel_sheet = state.forms.pixel_sheet || {}; if (p.image_upload) fs.image = { path: p.image_upload, url: p.image_url, name: basename(p.image_upload) }; else delete fs.image; const form = $('#pixel-sheet-form'); fillForm(form, p); for (const u of form.querySelectorAll('.field')) if (u.refresh) u.refresh(); form.scrollIntoView({ behavior: 'smooth', block: 'start' }); toast('settings loaded into the sprite-sheet form'); return; }
+  if (job.kind === 'pixel' || job.kind === 'pixel_anim') setPixelStyle(job.params.style === 'illustration' ? 'illustration' : 'pixel');
   if (job.kind === 'pixel_anim') { const p = job.params; const fs = state.forms.pixel_anim = state.forms.pixel_anim || {}; if (p.still_upload) fs.still = { path: p.still_upload, url: p.still_url, name: basename(p.still_upload) }; else delete fs.still; const form = $('#pixel-anim-form'); fillForm(form, p); for (const u of form.querySelectorAll('.field')) if (u.refresh) u.refresh(); form.scrollIntoView({ behavior: 'smooth', block: 'start' }); toast('settings loaded into the animate form'); return; }
   if (job.kind === 'model3d') show3dFlow('model3d');
   const form = job.kind === 'model3d' ? $('#model3d-form') : job.kind === 'pixel' ? $('#pixel-form') : $(`#page-${job.kind} form`);
@@ -446,9 +447,9 @@ function libraryCard(kind, it) {
   const key = it.path || it.name;
   const sel = state.selected[kind] === key;
   const img = kind === 'model3d' ? (it.thumb || it.reference || it.compare || it.diffuse) : kind === 'anim' ? (it.thumb || it.diffuse) : it.url;
-  const sub = kind === 'pixel' ? (it.kind === 'pixel_sheet' ? `walk sheet · 16 × ${it.meta?.cell_width || 32} px` : it.kind === 'pixel_anim' ? `${it.meta?.frames || it.frames?.length || '?'} frames · ${it.meta?.frame_width}×${it.meta?.frame_height}` : `${it.pixel?.width || '?'}×${it.pixel?.height || '?'} · ${it.pixel?.colors || '?'} colours`) + ' · ' + fmtDate(it.mtime) : kind === 'voice' ? `${it.voice || ''}${it.mood ? ' · ' + it.mood : ''} · ${fmtDate(it.mtime)}` : kind === 'anim' ? `${(it.clips || []).length} clip${(it.clips || []).length === 1 ? '' : 's'} · ${fmtDate(it.mtime)}` : fmtDate(it.mtime);
+  const sub = kind === 'pixel' ? (it.kind === 'pixel_sheet' ? `walk sheet · 16 × ${it.meta?.cell_width || 32} px` : it.kind === 'pixel_anim' ? `${it.style === 'illustration' ? 'illustration · ' : ''}${it.meta?.frames || it.frames?.length || '?'} frames · ${it.meta?.frame_width}×${it.meta?.frame_height}` : it.style === 'illustration' ? `illustration · ${it.pixel?.width || '?'}×${it.pixel?.height || '?'}` : `${it.pixel?.width || '?'}×${it.pixel?.height || '?'} · ${it.pixel?.colors || '?'} colours`) + ' · ' + fmtDate(it.mtime) : kind === 'voice' ? `${it.voice || ''}${it.mood ? ' · ' + it.mood : ''} · ${fmtDate(it.mtime)}` : kind === 'anim' ? `${(it.clips || []).length} clip${(it.clips || []).length === 1 ? '' : 's'} · ${fmtDate(it.mtime)}` : fmtDate(it.mtime);
   return h('div', { class: 'tile' + (sel ? ' sel' : ''), onclick: () => { state.selected[kind] = key; renderFlow(kind); } },
-    h('div', { class: 'img' + (kind === 'texture' ? ' tex' : '') + (kind === 'pixel' ? ' pix' : ''), 'data-thumb-for': kind === 'model3d' ? it.name : kind === 'anim' ? it.thumbName : null }, img ? h('img', { src: img, loading: 'lazy' }) : h('span', { class: 'ph' }, kind === 'model3d' ? '⬡' : kind === 'anim' ? '🏃' : '♪')),
+    h('div', { class: 'img' + (kind === 'texture' ? ' tex' : '') + (kind === 'pixel' && it.style !== 'illustration' ? ' pix' : ''), 'data-thumb-for': kind === 'model3d' ? it.name : kind === 'anim' ? it.thumbName : null }, img ? h('img', { src: img, loading: 'lazy' }) : h('span', { class: 'ph' }, kind === 'model3d' ? '⬡' : kind === 'anim' ? '🏃' : '♪')),
     h('div', { class: 'cap' }, h('b', { title: it.name }, it.name), h('span', {}, sub, it.untracked ? ' · raw' : '')));
 }
 function libraryBlock(kind) {
@@ -1446,21 +1447,47 @@ function swatches(pal) { return pal?.length ? h('span', { class: 'swatches' }, .
 function pickPixel(cb, anims = false) {
   loadLibrary('pixel').then(() => {
     const grid = h('div', { class: 'grid', style: { width: '720px', maxWidth: '86vw' } });
-    for (const it of state.library.pixel.filter(i => anims ? i.kind === 'pixel_anim' : i.kind === 'pixel')) grid.append(h('div', { class: 'tile', onclick: () => { cb({ path: it.path, url: it.url, name: it.file }); $('#modal').classList.add('hidden'); } }, h('div', { class: 'img pix' }, h('img', { src: it.url })), h('div', { class: 'cap' }, h('b', {}, it.name), h('span', {}, it.pixel ? `${it.pixel.width}×${it.pixel.height}` : ''))));
+    for (const it of state.library.pixel.filter(i => anims ? i.kind === 'pixel_anim' : i.kind === 'pixel')) grid.append(h('div', { class: 'tile', onclick: () => { cb({ path: it.path, url: it.url, name: it.file }); $('#modal').classList.add('hidden'); } }, h('div', { class: 'img' + (it.style === 'illustration' ? '' : ' pix') }, h('img', { src: it.url })), h('div', { class: 'cap' }, h('b', {}, it.name), h('span', {}, (it.style === 'illustration' ? 'illustration · ' : '') + (it.pixel ? `${it.pixel.width}×${it.pixel.height}` : '')))));
     modal(h('div', {}, h('h2', { style: { marginBottom: '12px' } }, 'Pick a pixel-art still'), grid.children.length ? grid : h('div', { class: 'empty' }, 'No pixel art yet: make a still first')));
   });
 }
-function buildPixelPage() { return h('div', {}, buildPixelForm(), buildPixelSheetForm(), h('details', { class: 'card', style: { padding: '10px 14px' } }, h('summary', { class: 'dim', style: { cursor: 'pointer' } }, 'Animate a still with a video model (Wan 2.2 14B + pixel-animation LoRA): crisp and consistent, modest motion; ~3.5 min'), buildPixelAnimForm())); }
+function pixelStyle() { return state.forms.pixelStyle || 'pixel'; }
+function withStyle(el, style) { el.dataset.style = style; return el; }
+function setPixelStyle(v) {
+  state.forms.pixelStyle = v; try { localStorage.setItem('pixelStyle', v); } catch (e) { /* no storage */ }
+  const page = $('#page-pixel'); if (!page) return;
+  for (const el of page.querySelectorAll('[data-style]')) el.classList.toggle('hidden', el.dataset.style !== v && el.dataset.style !== 'both');
+  for (const b of page.querySelectorAll('.style-switch button')) b.classList.toggle('on', b.dataset.v === v);
+  const w = $('#pixel-form [name=width]'), hgt = $('#pixel-form [name=height]');
+  if (w) w.placeholder = v === 'pixel' ? '64 / 128' : '512 / 1024';
+  if (hgt) hgt.placeholder = v === 'pixel' ? '= width' : '= width / 768';
+  const ttl = $('#pixel-form .card-head h2'); if (ttl) ttl.textContent = v === 'pixel' ? 'Pixel art still' : 'Illustrated still';
+  const anim = $('#pixel-anim-summary'); if (anim) anim.textContent = v === 'pixel' ? 'Animate a still with a video model (Wan 2.2 14B + pixel-animation LoRA): crisp and consistent, modest motion; ~3.5 min' : 'Animate an illustrated still with a video model (Wan 2.2 14B): cut-out frames at ~512 px, modest motion; ~3.5 min';
+}
+function buildPixelPage() {
+  let saved = 'pixel'; try { saved = localStorage.getItem('pixelStyle') || 'pixel'; } catch (e) { /* no storage */ }
+  state.forms.pixelStyle = saved === 'illustration' ? 'illustration' : 'pixel';
+  const sw = h('div', { class: 'card', style: { padding: '12px 14px' } }, h('div', { class: 'card-head', style: { marginBottom: '6px' } }, h('h2', {}, 'Style')),
+    h('div', { class: 'seg style-switch' },
+      h('button', { type: 'button', 'data-v': 'pixel', title: 'Real pixel art: LoRAs, snapped to a grid and a palette; walk-cycle sheets', onclick: () => setPixelStyle('pixel') }, 'Pixel art'),
+      h('button', { type: 'button', 'data-v': 'illustration', title: 'Clean digitally illustrated sprites and scenes at full size; no LoRA, no snapping', onclick: () => setPixelStyle('illustration') }, 'Illustration')),
+    h('div', { class: 'hint' }, 'Both styles share the still and animate flows. Pixel art snaps to a grid and palette and has walk-cycle sheets; illustration keeps klein’s painted output at the size you ask for and animates it without the pixel LoRA.'));
+  const page = h('div', {}, sw, buildPixelForm(), withStyle(buildPixelSheetForm(), 'pixel'),
+    h('details', { class: 'card', style: { padding: '10px 14px' } }, h('summary', { class: 'dim', id: 'pixel-anim-summary', style: { cursor: 'pointer' } }, ''), buildPixelAnimForm()));
+  setTimeout(() => setPixelStyle(state.forms.pixelStyle));
+  return page;
+}
 function buildPixelForm() {
   const fs = state.forms.pixel = state.forms.pixel || {};
   const form = h('form', { class: 'card form', id: 'pixel-form', onsubmit: e => e.preventDefault() });
   form.append(h('div', { class: 'card-head' }, h('h2', {}, 'Pixel art still')),
     field('Prompt', h('textarea', { name: 'prompt', placeholder: 'a knight in blue armour with a red plume, holding a sword, idle pose, side view' }), 'What the pixel art shows. The kind adds its trigger words (“pixel art sprite … game asset”). With a source picture: what to keep or change.'),
     field('Name', text('name', '', { placeholder: 'KnightIdle (from prompt)' })),
-    field('Kind', segf('kind', [['sprite', 'Sprite', 'Character / item LoRA on the distilled model, cut out to RGBA (~30 s)'], ['scene', 'Scene', 'Scene / tile LoRA on the base model, opaque: rooms, backgrounds, isometric buildings (~1 min)'], ['none', 'No LoRA', 'The prompt alone on the distilled model']], 'sprite'),
-      'Sprite: characters, items, enemies (64×64 default). Scene: backgrounds and tiles (128×128 default, opaque).'),
-    h('div', { class: 'three' }, field('Width (px)', num('width', '', { placeholder: '64 / 128', min: 8, max: 512 })), field('Height (px)', num('height', '', { placeholder: '= width', min: 8, max: 512 })), field('Colours', num('colors', 32, { min: 0, max: 256 }))),
-    h('div', { class: 'hint', style: { marginTop: '-6px', marginBottom: '10px' } }, 'The real size of the result in pixels: the picture is drawn at about 512 px and every block becomes one pixel. 0 colours keeps them all.'),
+    field('Kind', segf('kind', [['sprite', 'Sprite', 'Character / item, cut out to RGBA (~30 s)'], ['scene', 'Scene', 'Background / tiles, opaque (~1 min in pixel style)'], ['none', 'No LoRA', 'Pixel art from the prompt alone, no LoRA']], 'sprite'),
+      'Sprite: characters, items, enemies. Scene: backgrounds and tiles (opaque).'),
+    h('div', { class: 'three' }, field('Width (px)', num('width', '', { placeholder: '64 / 128', min: 8, max: 1024 })), field('Height (px)', num('height', '', { placeholder: '= width', min: 8, max: 1024 })), withStyle(field('Colours', num('colors', 32, { min: 0, max: 256 })), 'pixel')),
+    h('div', { class: 'hint', style: { marginTop: '-6px', marginBottom: '10px' }, 'data-style': 'pixel' }, 'The real size of the result in pixels: the picture is drawn at about 512 px and every block becomes one pixel. 0 colours keeps them all.'),
+    h('div', { class: 'hint', style: { marginTop: '-6px', marginBottom: '10px' }, 'data-style': 'illustration' }, 'The output size in pixels (multiples of 16, up to about 1 MP): klein draws the sprite or scene at that size and it is kept as is.'),
     uploadBox('pixel', 'image', 'Source picture = image 1 (optional)', { hint: 'A sprite or drawing to redraw as pixel art; leave empty to draw from text', pick: cb => pickSprite(cb) }),
     uploadBox('pixel', 'ref0', 'Reference = image 2 (optional)', { hint: '', pick: cb => pickSprite(cb) }),
     uploadBox('pixel', 'ref1', 'Reference = image 3 (optional)', { hint: '', pick: cb => pickSprite(cb) }),
@@ -1488,7 +1515,7 @@ function buildPixelAnimForm() {
   form.append(h('div', { class: 'card-head' }, h('h2', {}, 'Animate a still')),
     h('div', { class: 'hint', style: { marginBottom: '10px' } }, 'A video model animates the still, every frame is cut out and re-pixelized with the still’s own palette. Engine wan14 (Wan 2.2 14B as 4-bit GGUF + a LoRA trained on pixel sprite animations, 4 steps) keeps the pixel look and the character with modest motion (idles, gestures, effects); wan5b is the older, weaker route. For walk cycles use the sprite-sheet form above. Result: a frame strip, a GIF preview, the frames, the raw clip and a JSON.'),
     field('Engine', segf('engine', [['wan14', 'Wan 2.2 14B + pixel LoRA', 'Needs ai-3d/setup_pixel_anim.ps1 (ComfyUI-GGUF + ~21 GB); ~3.5 min'], ['wan5b', 'Wan 2.2 5B', 'The ai-vid model without a pixel LoRA: flickers and drifts']], 'wan14')),
-    uploadBox('pixel_anim', 'still', 'Pixel-art still to animate', { hint: 'Pick a result of the still form, or drop any PNG (a big one is pixelized first)', pick: cb => pickPixel(cb) }),
+    uploadBox('pixel_anim', 'still', 'Still to animate', { hint: 'Pick a result of the still form, or drop any PNG', pick: cb => pickPixel(cb) }),
     field('What moves', h('textarea', { name: 'prompt', placeholder: 'the knight walks in place, side view, legs and arms swinging' }), 'One motion. Idle, walk, run, attack, bounce, flicker, spin … Style hints (“stays in place, static camera, plain background”) are added.'),
     field('Name', text('name', '', { placeholder: 'KnightWalk (from the still + prompt)' })),
     h('div', { class: 'three' }, field('Frames', num('frames', 8, { min: 1, max: 64 })), field('FPS', num('fps', 8, { min: 1, max: 60 })), field('Clip seconds', num('seconds', '', { placeholder: '1.33 / 1.0', step: 0.25, min: 0.25, max: 5 }))),
@@ -1503,8 +1530,9 @@ function buildPixelAnimForm() {
       check('keep_frames', 'Keep the raw Wan frames in ComfyUI/output', false), check('raw', 'Raw prompt: no style hints', false)),
     h('div', { class: 'actions' }, h('button', { class: 'btn primary block', type: 'button', onclick: () => {
       const p = readForm(form); if (!p.prompt.trim()) return toast('say what moves', 'err');
-      if (!fs.still) return toast('pick a pixel-art still to animate', 'err');
-      p.still_upload = fs.still.path; p.still_url = fs.still.url;
+      p.style = pixelStyle(); if (p.style === 'illustration' && p.kind === 'none') p.kind = 'sprite';
+      if (!fs.still) return toast('pick a still to animate', 'err');
+      p.style = pixelStyle(); p.still_upload = fs.still.path; p.still_url = fs.still.url;
       if ((p.width || p.height) && !(p.width && p.height)) return toast('give both width and height, or neither', 'err');
       for (const k of Object.keys(p)) if (p[k] === '' || p[k] === null) delete p[k];
       submit('pixel_anim', p);
@@ -1563,20 +1591,21 @@ function resultPixel(job, lib) {
   if (!url) return h('div', { class: 'empty' }, 'No pixel art yet');
   const p = job?.params || lib?.job?.params || {}, m = job?.meta || lib?.job?.meta || {};
   const px = lib?.pixel || { width: o?.width, height: o?.height, colors: o?.colors, palette: m.palette };
-  const w = px?.width || o?.width, hgt = px?.height || o?.height, sc = pixScale(w, hgt);
+  const illus = (p.style || px?.style || lib?.style) === 'illustration';
+  const w = px?.width || o?.width, hgt = px?.height || o?.height, sc = illus ? 1 : pixScale(w, hgt);
   const inputs = [];
   if (p.image_upload) inputs.push({ label: 'Source (image 1)', url: p.image_url });
   (p.ref_uploads || []).forEach((r, i) => inputs.push({ label: `Reference (image ${i + 2})`, url: (p.ref_urls || [])[i] }));
   const pal = px?.palette || m.palette;
   const box = h('div', {},
     h('div', { class: 'split' },
-      h('div', { class: 'big checker pix' }, h('img', { src: url, style: { width: (w * sc) + 'px', maxWidth: '100%', cursor: 'zoom-in' }, onclick: () => modal(h('img', { class: 'pix', src: url, style: { width: (w * pixScale(w, hgt, 900)) + 'px' } })) })),
+      h('div', { class: 'big checker' + (illus ? '' : ' pix') }, h('img', { src: url, style: { width: illus ? 'auto' : (w * sc) + 'px', maxWidth: '100%', cursor: 'zoom-in' }, onclick: () => illus ? lightbox(url) : modal(h('img', { class: 'pix', src: url, style: { width: (w * pixScale(w, hgt, 900)) + 'px' } })) })),
       h('div', {}, inputs.length ? h('div', {}, h('h3', {}, 'Inputs'), h('div', { class: 'thumbs', style: { marginTop: '8px' } }, inputs.map(i => h('div', { class: 't', title: i.label, onclick: () => lightbox(i.url) }, h('img', { src: i.url }), h('span', {}, i.label))))) : null,
         job?.outputs?.raw ? h('div', { style: { marginTop: '10px' } }, h('h3', {}, 'Before pixelization'), h('div', { class: 'thumbs', style: { marginTop: '8px' } }, h('div', { class: 't', onclick: () => lightbox(job.outputs.raw.url) }, h('img', { src: job.outputs.raw.url }), h('span', {}, 'diffusion output')))) : null,
-        kv([['Prompt', copyable(p.prompt ?? lib?.meta?.prompt)], ['Kind', m.kind || p.kind], ['Size', w && `${w}×${hgt} px${m.size ? ` (drawn at ${m.size}, ×${m.scale})` : px?.scale ? ` (×${px.scale})` : ''}`], ['Colours', pal?.length ? h('span', {}, `${pal.length} `, swatches(pal)) : (px?.colors || null)], ['Model', m.model && `${m.model}, ${m.steps} steps${m.cfg ? ', cfg ' + m.cfg : ''}`], ['LoRA', m.lora ? `${m.lora}${p.lora_strength ? ' @ ' + p.lora_strength : ''}` : (m.kind ? 'none' : null)], ['Seed', p.seed ?? m.seed ?? lib?.meta?.seed], ['Alpha', m.alpha]]))),
+        kv([['Prompt', copyable(p.prompt ?? lib?.meta?.prompt)], ['Style', illus ? 'illustration' : 'pixel art'], ['Kind', m.kind || p.kind], ['Size', w && (illus ? `${w}×${hgt} px` : `${w}×${hgt} px${m.size ? ` (drawn at ${m.size}, ×${m.scale})` : px?.scale ? ` (×${px.scale})` : ''}`)], ['Colours', pal?.length ? h('span', {}, `${pal.length} `, swatches(pal)) : (px?.colors || null)], ['Model', m.model && `${m.model}, ${m.steps} steps${m.cfg ? ', cfg ' + m.cfg : ''}`], ['LoRA', m.lora ? `${m.lora}${p.lora_strength ? ' @ ' + p.lora_strength : ''}` : (m.kind ? 'none' : null)], ['Seed', p.seed ?? m.seed ?? lib?.meta?.seed], ['Alpha', m.alpha]]))),
     h('div', { class: 'actions' }, dl(url, 'PNG'), reveal(path),
-      h('button', { class: 'btn sm primary', title: 'Draw a 4x4 walk-cycle sheet of this character', onclick: () => setSheetImage({ path, url, name: basename(url) }) }, '▶ Walk-cycle sheet'),
-      h('button', { class: 'btn sm', title: 'Animate it with the video model (Wan 2.2 14B + pixel-animate LoRA)', onclick: () => setPixelStill({ path, url, name: basename(url) }) }, 'Animate (video)'),
+      illus ? null : h('button', { class: 'btn sm primary', title: 'Draw a 4x4 walk-cycle sheet of this character', onclick: () => setSheetImage({ path, url, name: basename(url) }) }, '▶ Walk-cycle sheet'),
+      h('button', { class: 'btn sm' + (illus ? ' primary' : ''), title: 'Animate it with the video model (Wan 2.2 14B)', onclick: () => setPixelStill({ path, url, name: basename(url) }) }, '▶ Animate (video)'),
       h('button', { class: 'btn sm', title: 'Redraw it: this still becomes image 1 of the still form', onclick: () => setPixelInput('image', { path, url, name: basename(url) }) }, '↪ Use as source')));
   return box;
 }
@@ -1588,16 +1617,17 @@ function resultPixelAnim(job, lib) {
   const p = job?.params || lib?.job?.params || {}, m = job?.meta || lib?.job?.meta || {}, meta = lib?.meta || {};
   const fw = meta.frame_width || Number((m.art || '').split('x')[0]) || 64, fh = meta.frame_height || Number((m.art || '').split('x')[1]) || 64;
   const n = meta.frames || m.frames || frames.length, fps = meta.fps || m.fps, pal = meta.palette || m.palette;
-  const gifScale = p.preview_scale || 4, sc = pixScale(fw, fh, 420);
+  const illusA = (p.style || meta.style || lib?.style) === 'illustration';
+  const gifScale = p.preview_scale || 4, sc = illusA ? 1 : pixScale(fw, fh, 420);
   const still = o.still?.url || p.still_url;
   const box = h('div', {},
     h('div', { class: 'split' },
-      h('div', { class: 'big checker pix' }, gif ? h('img', { src: gif, style: { width: Math.round(fw * sc) + 'px', maxWidth: '100%' }, title: `${n} frames at ${fps} fps` }) : h('img', { src: sheet })),
+      h('div', { class: 'big checker' + (illusA ? '' : ' pix') }, gif ? h('img', { src: gif, style: { width: illusA ? 'auto' : Math.round(fw * sc) + 'px', maxWidth: '100%' }, title: `${n} frames at ${fps} fps` }) : h('img', { src: sheet })),
       h('div', {}, still ? h('div', {}, h('h3', {}, 'Still'), h('div', { class: 'thumbs pix', style: { marginTop: '8px' } }, h('div', { class: 't', onclick: () => lightbox(still) }, h('img', { src: still }), h('span', {}, basename(still))))) : null,
         mp4 ? h('div', { style: { marginTop: '10px' } }, h('h3', {}, 'Raw Wan clip'), h('video', { src: mp4, controls: true, loop: true, muted: true, style: { width: '100%', maxWidth: '260px', marginTop: '8px', borderRadius: '6px', background: '#000' } })) : null,
-        kv([['Prompt', copyable(p.prompt ?? meta.prompt)], ['Frames', n && `${n} × ${fw}×${fh} px at ${fps} fps${{ pin: ', pinned loop', pingpong: ', ping-pong' }[p.loop ?? meta.loop] || ''}`], ['Engine', m.engine === 'wan14' ? 'Wan 2.2 14B + pixel-animate LoRA' : m.engine ? 'Wan 2.2 5B' : null], ['Clip', m.clip_frames && `${m.clip_frames} frames at ${m.video}, ${m.steps} steps, cfg ${m.cfg}`], ['Colours', pal?.length ? h('span', {}, `${pal.length} `, swatches(pal)) : null], ['Seed', p.seed ?? m.seed ?? meta.seed]]))),
-    sheet ? h('div', {}, h('h3', { style: { margin: '12px 0 0' } }, 'Sprite sheet'), h('div', { class: 'sheet' }, h('img', { src: sheet, style: { width: (fw * n * Math.min(4, sc)) + 'px' }, onclick: () => lightbox(sheet) }))) : null,
-    frames.length ? h('div', {}, h('h3', { style: { margin: '12px 0 6px' } }, 'Frames'), h('div', { class: 'thumbs pix' }, ...frames.map((f, i) => h('div', { class: 't', onclick: () => lightbox(f.url) }, h('img', { src: f.url }), h('span', {}, `frame ${i}`))))) : null,
+        kv([['Prompt', copyable(p.prompt ?? meta.prompt)], ['Style', illusA ? 'illustration' : 'pixel art'], ['Frames', n && `${n} × ${fw}×${fh} px at ${fps} fps${{ pin: ', pinned loop', pingpong: ', ping-pong' }[p.loop ?? meta.loop] || ''}`], ['Engine', m.engine === 'wan14' ? (illusA ? 'Wan 2.2 14B (4-step)' : 'Wan 2.2 14B + pixel-animate LoRA') : m.engine ? 'Wan 2.2 5B' : null], ['Clip', m.clip_frames && `${m.clip_frames} frames at ${m.video}, ${m.steps} steps, cfg ${m.cfg}`], ['Colours', pal?.length ? h('span', {}, `${pal.length} `, swatches(pal)) : null], ['Seed', p.seed ?? m.seed ?? meta.seed]]))),
+    sheet ? h('div', {}, h('h3', { style: { margin: '12px 0 0' } }, 'Sprite sheet'), h('div', { class: 'sheet' }, h('img', { src: sheet, style: { width: (fw * n * Math.min(4, sc)) + 'px', imageRendering: illusA ? 'auto' : 'pixelated' }, onclick: () => lightbox(sheet) }))) : null,
+    frames.length ? h('div', {}, h('h3', { style: { margin: '12px 0 6px' } }, 'Frames'), h('div', { class: 'thumbs' + (illusA ? '' : ' pix') }, ...frames.map((f, i) => h('div', { class: 't', onclick: () => lightbox(f.url) }, h('img', { src: f.url }), h('span', {}, `frame ${i}`))))) : null,
     h('div', { class: 'actions' }, dl(sheet, 'Sheet PNG'), dl(gif, 'GIF'), json ? dl(json, 'JSON') : null, dl(mp4, 'Raw MP4'), reveal(o.sheet?.path || lib?.sheet_path),
       still ? h('button', { class: 'btn sm', title: 'Animate the same still again (new prompt or seed)', onclick: () => setPixelStill({ path: o.still?.path || p.still_upload, url: still, name: basename(still) }) }, '↻ Animate again') : null));
   return box;
